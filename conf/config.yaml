@@ -9,7 +9,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 5
+directive: 0
 deployment: 1
 
 #--------------------------------
@@ -44,7 +44,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 6
-    model_id: 'svd-mode-encoding'
+    model_id: 'smarter-15'
 
     # General Model Parameters
 
@@ -170,7 +170,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 2 # maximum
+    num_epochs: 50 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
