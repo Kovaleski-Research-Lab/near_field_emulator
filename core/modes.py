@@ -4,6 +4,8 @@ from tqdm import tqdm
 from scipy.special import genlaguerre
 import os
 import matplotlib.pyplot as plt
+import sys
+sys.stdout.reconfigure(line_buffering=True)
     
 '''def svd(x, config):
     """
@@ -102,7 +104,8 @@ def svd(field):
     U, S, Vh = torch.linalg.svd(field, full_matrices=False)
 
     # 3) Find optimal k
-    k_opt = find_optimal_k_svd(S, threshold=0.95)
+    #k_opt = find_optimal_k_svd(S, threshold=0.95)
+    k_opt = 3 # 3 seems best after analyzing the data
     
     # 4) store the full SVD params
     full_svd_params = {
@@ -117,9 +120,6 @@ def svd(field):
 
 def encode_svd(x):
     samples, r_i, xdim, ydim, slices = x.size()
-    
-    import sys
-    sys.stdout.reconfigure(line_buffering=True)
 
     # 1) Prepare nested lists for storing results
     #    - top_k_s_list[i][c][j] will be a 1D tensor with the top singular values for that slice
@@ -128,7 +128,7 @@ def encode_svd(x):
     svd_params_list = [[[None for _ in range(slices)] for _ in range(r_i)] for _ in range(samples)]
     
     # We'll also keep a flat list of top_k_s lengths to find min_k across all slices
-    all_top_k_lengths = []
+    #all_top_k_lengths = []
     
     # 2) Iterate over each sample, channel, and slice
     for i in tqdm(range(samples), desc='Processing Samples', mininterval=0.1):
@@ -139,26 +139,23 @@ def encode_svd(x):
                 
                 # 3) Call the base SVD function
                 single_top_k_s, single_svd_params = svd(slice_2d)
-                print(f"Single top k s shape: {single_top_k_s.shape}", flush=True)
                 top_k_s_list[i][c][j] = single_top_k_s
                 svd_params_list[i][c][j] = single_svd_params
-                all_top_k_lengths.append(len(single_top_k_s))
+                #all_top_k_lengths.append(len(single_top_k_s))
 
     # 4) Find the global minimum k across all slices
-    min_k = min(all_top_k_lengths) if len(all_top_k_lengths) > 0 else 0
-    print(f"Minimum k across all slices: {min_k}")
+    #min_k = min(all_top_k_lengths) if len(all_top_k_lengths) > 0 else 0
+    #print(f"Minimum k across all slices: {min_k}")
 
-    # 5) Now we build a 4D tensor for the top-k singular values: [samples, r_i, min_k, slices]
-    #    We'll truncate each slice's singular values to min_k.
-    top_k_s = torch.zeros((samples, r_i, min_k, slices), dtype=x.dtype, device=x.device)
+    # 5) Now we build a 4D tensor for the top-k singular values: [samples, r_i, k, slices]
+    top_k_s = torch.zeros((samples, r_i, 3, slices), dtype=x.dtype, device=x.device)
 
     # Fill in that 4D tensor
     for i in range(samples):
         for c in range(r_i):
             for j in range(slices):
-                # each top_k_s_list[i][c][j] is a 1D tensor of shape [k_current]
-                # we slice out the first min_k entries
-                truncated = top_k_s_list[i][c][j][:min_k]
+                # each top_k_s_list[i][c][j] is a 1D tensor of shape [k]
+                truncated = top_k_s_list[i][c][j]
                 top_k_s[i, c, :, j] = truncated
                 
     # to be respectful of LSTM process, we need a dummy dim 2

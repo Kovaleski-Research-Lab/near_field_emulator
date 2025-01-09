@@ -17,6 +17,9 @@ spec:
         - name: ethan-data-job
           image: docker.io/kovaleskilab/ml_basic:v4
           imagePullPolicy: Always
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
           command: ["/bin/sh", "-c"]
 
           args: ["set -x &&
