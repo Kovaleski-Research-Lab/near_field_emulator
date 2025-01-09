@@ -11,6 +11,9 @@ spec:
         - name: ethan-modelstm-train
           image: docker.io/kovaleskilab/ml_basic:v4 
           imagePullPolicy: IfNotPresent
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
           ports:
             - containerPort: 8880
           env:

@@ -417,6 +417,12 @@ def run(config):
     # encode accordingly
     encoded_data = encode_modes(full_data, config)
     
+    if config.model.modelstm.method == 'svd':
+        # save the full SVD params
+        params_path = os.path.join(datasets_path, f"svd_params.pt")
+        torch.save(encoded_data['full_svd_params'], params_path)
+        del encoded_data['full_svd_params'] # remove from base dataset
+        
     # construct appropriate save path
     save_path = os.path.join(datasets_path, f"dataset_{config.model.modelstm.method}.pt")
     if os.path.exists(save_path):
