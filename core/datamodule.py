@@ -308,6 +308,11 @@ def format_temporal_data(data, conf, order=(-1, 0, 1, 2)):
 
         total = full_sequence.shape[-1] # all time slices
         
+        if conf.model.arch == 'modelstm':
+            # normalize the data to be between -1 and 1
+            # data is currently [2, 1, 3, total_slices]
+            full_sequence = full_sequence / 180 * np.pi
+            
         if spacing_mode == 'distributed':
             if io_mode == 'one_to_many':
                 # calculate seq_len+1 evenly spaced indices

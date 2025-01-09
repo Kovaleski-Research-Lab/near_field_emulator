@@ -9,7 +9,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 1
 
 #--------------------------------
@@ -44,7 +44,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 6
-    model_id: 'smarter-15'
+    model_id: 'smarter-15-v2'
 
     # General Model Parameters
 
