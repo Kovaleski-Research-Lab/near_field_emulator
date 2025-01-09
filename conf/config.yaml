@@ -9,7 +9,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 1
 
 #--------------------------------
@@ -44,7 +44,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 6
-    model_id: 'smarter-15-v2'
+    model_id: 'smarter-60'
 
     # General Model Parameters
 
@@ -160,7 +160,7 @@ model:
     # - spacing_mode: 'sequential' or 'distributed'
     # - autoreg: autoregressive mode or teacher forcing - M2M only
 
-    seq_len: 15
+    seq_len: 60
     io_mode: 'one_to_many'
     spacing_mode: 'sequential'
     autoreg: True
