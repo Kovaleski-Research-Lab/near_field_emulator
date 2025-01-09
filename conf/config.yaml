@@ -161,8 +161,8 @@ model:
     # - autoreg: autoregressive mode or teacher forcing - M2M only
 
     seq_len: 15
-    io_mode: 'one_to_many'
-    spacing_mode: 'distributed'
+    io_mode: 'many_to_many'
+    spacing_mode: 'sequential'
     autoreg: True
 
 #--------------------------------
