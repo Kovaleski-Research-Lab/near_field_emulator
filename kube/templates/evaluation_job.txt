@@ -11,6 +11,9 @@ spec:
         - name: {{job_name}}
           image: {{path_image}} 
           imagePullPolicy: IfNotPresent
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
           ports:
             - containerPort: 8880
           env:

@@ -117,6 +117,9 @@ def svd(field):
 
 def encode_svd(x):
     samples, r_i, xdim, ydim, slices = x.size()
+    
+    import sys
+    sys.stdout.reconfigure(line_buffering=True)
 
     # 1) Prepare nested lists for storing results
     #    - top_k_s_list[i][c][j] will be a 1D tensor with the top singular values for that slice
@@ -128,7 +131,7 @@ def encode_svd(x):
     all_top_k_lengths = []
     
     # 2) Iterate over each sample, channel, and slice
-    for i in tqdm(range(samples), desc='Processing Samples'):
+    for i in tqdm(range(samples), desc='Processing Samples', mininterval=0.1):
         for c in range(r_i):
             for j in range(slices):
                 # Extract the 2D matrix [xdim, ydim]
@@ -136,7 +139,7 @@ def encode_svd(x):
                 
                 # 3) Call the base SVD function
                 single_top_k_s, single_svd_params = svd(slice_2d)
-                
+                print(f"Single top k s shape: {single_top_k_s.shape}", flush=True)
                 top_k_s_list[i][c][j] = single_top_k_s
                 svd_params_list[i][c][j] = single_svd_params
                 all_top_k_lengths.append(len(single_top_k_s))

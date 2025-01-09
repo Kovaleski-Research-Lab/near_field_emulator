@@ -17,6 +17,9 @@ spec:
         - name: {{job_name}}
           image: {{path_image}}
           imagePullPolicy: Always
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
           command: ["/bin/sh", "-c"]
 
           args: ["set -x &&
