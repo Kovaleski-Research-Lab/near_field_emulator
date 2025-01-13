@@ -200,7 +200,7 @@ def reconstruct_svd(top_k_s, svd_params):
     Vh = svd_params['Vh'] # [166, 166]
 
     # Number of components we are reconstructing with
-    k = top_k_s.shape[0]
+    k = top_k_s.shape[-1]
 
     # U_k: left singular vectors corresponding to top k singular values
     U_k = U[:, :k]  # [166, k]
@@ -216,6 +216,17 @@ def reconstruct_svd(top_k_s, svd_params):
     M_approx = U_k @ S_k @ Vh_k  # [166, 166]
 
     return M_approx
+
+def reconstruct_full_dataset(preds, full_svd_params):
+    # preds is [samples, r_i, 1, k, seq_len]
+    # full_svd_params is a list of dicts, each with U, S, Vh
+    # we need to reconstruct each slice, then concatenate
+    samples, r_i, k, seq_len = preds.size()
+    reconstructed = torch.zeros_like(preds)
+    for i in range(samples):
+        for j in range(seq_len):
+            reconstructed[i, :, :, :, j] = reconstruct_svd(preds[i, :, :, :, j], full_svd_params[i])
+    return reconstructed
 
 def random_proj(x, config):
     """

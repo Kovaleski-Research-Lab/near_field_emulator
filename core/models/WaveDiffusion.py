@@ -21,7 +21,7 @@ class WaveDiffusion(WaveModel):
     def create_architecture(self):
         # Load a pretrained image-to-video pipeline from Stability AI
         self.pipeline = DiffusionPipeline.from_pretrained(
-             "stabilityai/stable-video-diffusion-img2vid", torch_dtype=torch.float16
+             "stabilityai/stable-video-diffusion-img2vid", use_safetensors=True
         ).to(self._device)
         
         # Pseudocode (you'll need to replace with actual code from the SVD model):
@@ -35,7 +35,7 @@ class WaveDiffusion(WaveModel):
         #     self.pipeline = self.pipeline.to(torch.float16)
         
         # Since actual pipeline code is environment dependent, we use a placeholder.
-        self.pipeline = None  # Replace this with real loading code.
+        #self.pipeline = None  # Replace this with real loading code.
 
     def forward(self, x, meta=None):
         """
@@ -62,42 +62,28 @@ class WaveDiffusion(WaveModel):
         initial_frame = x[:, 0]  # shape: (batch, r_i, H, W), where r_i=2 typically (real/imag)
         
         # Normalize to [0,1] and create a pseudo-RGB image: 
-        # E.g., (r_i=2) -> (R=real, G=imag, B=imag again or zeros)
+        # E.g., (r_i=2) -> (R=real, G=imag, B=zeros)
         # Ensure no negative values and scale appropriately if needed.
         # This is just a placeholder normalization; adapt as needed.
         pseudo_rgb = torch.zeros(batch, 3, height, width, _device=x._device)
         pseudo_rgb[:, 0] = (initial_frame[:, 0] - initial_frame[:, 0].min()) / (initial_frame[:, 0].max() - initial_frame[:, 0].min() + 1e-8)
         pseudo_rgb[:, 1] = (initial_frame[:, 1] - initial_frame[:, 1].min()) / (initial_frame[:, 1].max() - initial_frame[:, 1].min() + 1e-8)
-        pseudo_rgb[:, 2] = pseudo_rgb[:, 1]  # duplicate imag to get a 3rd channel
-        
-        # Convert to a format the pipeline expects. Typically pipelines operate on CPU and expect PIL images,
-        # so we may need to move to CPU and convert to PIL. This is slow and tricky in training.
-        # Ideally, you'd modify the pipeline to accept tensors directly. For now, show conceptual steps.
-        
-        # Pseudocode conversion to PIL (assuming single batch for demonstration):
-        # If multiple samples per batch, you'd loop or handle them individually.
+        pseudo_rgb[:, 2] = torch.zeros_like(pseudo_rgb[:, 1])
         
         # NOTE: This code assumes batch=1 for simplicity. For larger batch sizes, 
         # you'd likely run one sample at a time or modify the pipeline for batch processing.
         if batch > 1:
             raise NotImplementedError("For simplicity, this example only handles batch=1 with SVD.")
         
-        pseudo_rgb_np = pseudo_rgb.squeeze(0).detach().cpu().numpy().transpose(1,2,0)  # (H,W,3)
-        # from PIL import Image
-        # initial_image = Image.fromarray((pseudo_rgb_np*255).astype(np.uint8))
+        # format input image for pipeline
+        input_img = pseudo_rgb.squeeze(0).permute(1,2,0) # (H,W,3)
         
-        # Run through the SVD pipeline:
-        # results = self.pipeline(prompt=self.prompt, image=initial_image, num_frames=self.num_generated_frames)
-        # predicted_frames = results.frames  # Assume a list of PIL Images or np arrays
+        # Run through the SVDiffusion pipeline:
+        results = self.pipeline(prompt=self.prompt, image=input_img, num_frames=self.num_generated_frames)
+        predicted_frames = results.frames
         
-        # Placeholder: simulate output frames as random noise
-        predicted_frames = []
-        for _ in range(self.num_generated_frames):
-            predicted_frame = torch.rand(1, 3, height, width, _device=x._device)  # Dummy frame
-            predicted_frames.append(predicted_frame)
-        
-        # Stack predicted frames: (1, num_generated_frames, 3, H, W)
-        predicted_frames = torch.cat(predicted_frames, dim=0).unsqueeze(0)  # (batch=1, seq_len=14, 3, H, W)
+        # convert to tensor
+        predicted_frames = torch.tensor(predicted_frames).unsqueeze(0) # (1, seq_len, 3, H, W)
         
         # Convert frames back to real/imag format. We had R=real, G=imag. We'll ignore B or just trust it matches G.
         # Inverse normalization (this is just conceptual; you should store normalization stats and invert properly).
