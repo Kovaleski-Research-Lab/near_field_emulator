@@ -34,8 +34,8 @@ class WaveDiffusion(WaveModel):
         # if self.use_half_precision:
         #     self.pipeline = self.pipeline.to(torch.float16)
         
-        # Since actual pipeline code is environment dependent, we use a placeholder.
-        #self.pipeline = None  # Replace this with real loading code.
+        for param in self.pipeline.parameters():
+            param.requires_grad = True
 
     def forward(self, x, meta=None):
         """
