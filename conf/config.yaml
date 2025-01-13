@@ -154,6 +154,14 @@ model:
         spatial: 166
         method: 'linear'
 
+    # Diffusion Parameters
+    # - num_generated_frames: number of frames to generate
+    # - prompt: prompt for diffusion model
+
+    diffusion:
+        num_generated_frames: 14
+        prompt: ''
+
     # General Time Series Parameters
     # - seq_len: number of time steps
     # - io_mode: 'one_to_many' or 'many_to_many'

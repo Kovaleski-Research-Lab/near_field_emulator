@@ -40,6 +40,10 @@ class ModesConfig(BaseModel):
     l_max: int
     seed: int
     method: Literal['svd', 'random', 'gauss', 'fourier'] = 'svd'
+    
+class DiffusionConfig(BaseModel):
+    num_generated_frames: int = 14
+    prompt: str = ''
 
 class ModelConfig(BaseModel):
     arch: str # an int in config.yaml
@@ -61,6 +65,7 @@ class ModelConfig(BaseModel):
     modelstm: ModesConfig = None
     convlstm: ConvLSTMConfig = None
     autoencoder: AutoencoderConfig = None
+    diffusion: DiffusionConfig = None
     seq_len: int = 10
     io_mode: str = "one_to_many"
     autoreg: bool = True
