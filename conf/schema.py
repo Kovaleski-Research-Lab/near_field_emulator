@@ -44,7 +44,7 @@ class ModesConfig(BaseModel):
 class DiffusionConfig(BaseModel):
     num_generated_frames: int = 14
     prompt: str = ''
-
+    use_half_precision: bool = True
 class ModelConfig(BaseModel):
     arch: str # an int in config.yaml
     model_id: str

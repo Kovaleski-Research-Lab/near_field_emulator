@@ -161,6 +161,7 @@ model:
     diffusion:
         num_generated_frames: 14
         prompt: ''
+        use_half_precision: True
 
     # General Time Series Parameters
     # - seq_len: number of time steps

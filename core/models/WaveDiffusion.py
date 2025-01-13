@@ -25,9 +25,9 @@ class WaveDiffusion(WaveModel):
         ).to(self._device)
         
         # Pseudocode (you'll need to replace with actual code from the SVD model):
-        self.num_generated_frames = self.conf.diffuser.get('num_generated_frames', 14)
-        self.prompt = self.conf.diffuser.get('prompt', "")
-        self.use_half_precision = self.conf.diffuser.get('use_half_precision', True)
+        self.num_generated_frames = self.conf.diffusion.num_generated_frames
+        self.prompt = self.conf.diffusion.prompt
+        self.use_half_precision = self.conf.diffusion.use_half_precision
         
         #
         # If half precision is desired:
