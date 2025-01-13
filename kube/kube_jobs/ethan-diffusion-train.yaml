@@ -1,15 +1,15 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{job_name}} 
+  name: ethan-diffusion-train 
 spec:
   ttlSecondsAfterFinished: 3600
   template:
     spec:
       restartPolicy: Never 
       containers:
-        - name: {{job_name}}
-          image: {{path_image}} 
+        - name: ethan-diffusion-train
+          image: docker.io/kovaleskilab/ml_basic:v4-kube 
           imagePullPolicy: Always
           env:
             - name: PYTHONUNBUFFERED
@@ -28,18 +28,18 @@ spec:
                   python3 /develop/code/near_field_emulator/main.py --config /develop/code/near_field_emulator/conf/config.yaml"]
           resources:
             limits:
-              memory: {{num_mem_lim}} 
-              cpu: {{num_cpus}} 
-              nvidia.com/a100: {{num_gpus}}
+              memory: 100Gi 
+              cpu: 16 
+              nvidia.com/a100: 1
             requests:
-              memory: {{num_mem_req}}
-              cpu: {{num_cpus}}
-              nvidia.com/a100: {{num_gpus}}
+              memory: 100Gi
+              cpu: 16
+              nvidia.com/a100: 1
           volumeMounts:
-            - name: {{pvc_preprocessed}}
-              mountPath: {{pp_data_path}}
-            - name: {{pvc_results}}
-              mountPath: {{results_path}}
+            - name: nfe-data
+              mountPath: /develop/data/preprocessed_data
+            - name: training-results
+              mountPath: /develop/results
             - name: shm 
               mountPath: /dev/shm
             - name: ssh-key
@@ -47,12 +47,12 @@ spec:
               readOnly: true
 
       volumes:
-        - name: {{pvc_preprocessed}}
+        - name: nfe-data
           persistentVolumeClaim:
-            claimName: {{pvc_preprocessed}}
-        - name: {{pvc_results}}
+            claimName: nfe-data
+        - name: training-results
           persistentVolumeClaim:
-            claimName: {{pvc_results}}
+            claimName: training-results
         - name: shm
           emptyDir:
             medium: Memory

@@ -252,7 +252,7 @@ data:
 #--------------------------------
 kube:
     namespace : gpn-mizzou-muem
-    image : docker.io/kovaleskilab/ml_basic:v4
+    image : docker.io/kovaleskilab/ml_basic:v4-kube
     job_files : /develop/code/near_field_emulator/kube/kube_jobs  # this is a local directory
     pvc_volumes : dft-volumes # use `kubectl get pvc` to see list of pvcs
     pvc_preprocessed : nfe-data 
