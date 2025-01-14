@@ -102,7 +102,7 @@ class NF_Datamodule(LightningDataModule):
             data_combined = {'near_fields': [], 'phases': [], 
                              'derivatives': [], 'radii': [], 
                              'tag': [], 'wavelength': []}  # Dictionary to store concatenated data
-            for wv in tqdm(wv_idx, desc="Loading data...", ncols=80, file=sys.stderr, mininterval=1.0):
+            for wv in tqdm(wv_idx, desc="Loading data...", ncols=80, file=sys.stderr, mininterval=1.0, dynamic_ncols=True):
                 datapath = self.get_datapath(wv)
                 wv_data = torch.load(datapath, weights_only=True)
 
