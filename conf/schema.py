@@ -135,21 +135,36 @@ class DataConfig(BaseModel):
     n_cpus: int
     n_folds: int
     buffer: bool = True
-    wavelength: float
-    eval_wavelength: float
+    wv_dict: Dict[str, float]
+    wv_preprocess: str
+    wv_train: str
+    wv_eval: str
     
-    @field_validator("wavelength", mode="before")
-    def validate_wavelength(cls, value):
-        possibilities = [2.881, 1.65, 1.55, 1.3, 1.06]
+    @field_validator("wv_preprocess", mode="before")
+    def validate_pp_wavelength(cls, value):
+        if len(value) != 1:
+            raise ValueError(f"Wavelength index must be a single character")
+        possibilities = ['1', '2', '3', '4', '5']
         if value not in possibilities:
-            raise ValueError(f"Wavelength must be one of {possibilities}")
+            raise ValueError(f"Wavelength index must be one of {possibilities}")
         return value
     
-    @field_validator("eval_wavelength", mode="before")
+    @field_validator("wv_train", mode="before")
+    def validate_train_wavelength(cls, value):
+        if len(value) > 5 or len(value) < 1:
+            raise ValueError(f"Wavelength must be a string of length 1-5")
+        for char in value:
+            if char not in ['1', '2', '3', '4', '5']:
+                raise ValueError(f"Possible indices are 1, 2, 3, 4, 5")
+        return value
+    
+    @field_validator("wv_eval", mode="before")
     def validate_eval_wavelength(cls, value):
-        possibilities = [2.881, 1.65, 1.55, 1.3, 1.06]
-        if value not in possibilities:
-            raise ValueError(f"Wavelength must be one of {possibilities}")
+        if len(value) > 5 or len(value) < 1:
+            raise ValueError(f"Wavelength must be a string of length 1-5")
+        for char in value:
+            if char not in ['1', '2', '3', '4', '5']:
+                raise ValueError(f"Possible indices are 1, 2, 3, 4, 5")
         return value
     
 class PhysicsConfig(BaseModel):

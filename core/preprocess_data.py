@@ -150,7 +150,7 @@ def run(conf):
                 sample = pickle.load(open(sample_path,"rb"))
 
                 # just going to look at the y component of specified wavelength
-                wavelength = conf.data.wavelength
+                wavelength = conf.data.wv_dict[conf.data.wv_preprocess]
                 vol = torch.from_numpy(sample[wavelength][1])  # shape is [2,166,166,63]
                                                          #          [real/im,xdim,ydim,num_slices]
 

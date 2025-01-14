@@ -43,8 +43,8 @@ model:
         # - 8: Autoencoder - Used in conjunction with arch 4, 5
     # - model_id: model identifier / name
 
-    arch: 7
-    model_id: 'diffusion-v1'
+    arch: 2
+    model_id: '15-234'
 
     # General Model Parameters
 
@@ -169,7 +169,7 @@ model:
     # - spacing_mode: 'sequential' or 'distributed'
     # - autoreg: autoregressive mode or teacher forcing - M2M only
 
-    seq_len: 14
+    seq_len: 15
     io_mode: 'one_to_many'
     spacing_mode: 'sequential'
     autoreg: True
@@ -178,8 +178,8 @@ model:
 #       Training Params
 #--------------------------------
 trainer:
-    batch_size: 1
-    num_epochs: 25 # maximum
+    batch_size: 8
+    num_epochs: 50 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
@@ -247,14 +247,17 @@ data:
     # - n_cpus: number of cpus
     # - n_folds: number of folds for cross val
     # - buffer: True/False - whether to use buffer dataset or old U-Net data (no buffer)
-    # - wavelength: wavelength to use for preprocessing
-    # ---> [2.881, 1.65, 1.55, 1.3, or 1.06]
-    # - eval_wavelength: wavelength to use for evaluation
+    # - wv_dict: dictionary of the possible wavelengths, numbered ascending
+    # - wv_preprocess, wv_train and wv_eval refer to indices of wavelengths in wv_dict
+    # ---> they control which wavelengths are used for their respective tasks
+    # ---> wv_preprocess has to be a single value, wv_train and wv_eval can be multiple values
     n_cpus: 5
     n_folds: 3
     buffer: True
-    wavelength: 1.55
-    eval_wavelength: 1.55
+    wv_dict: {'1': 1.06, '2': 1.3, '3': 1.55, '4': 1.65, '5': 2.881}
+    wv_preprocess: '3'
+    wv_train: '234'
+    wv_eval: '234'
 
 #--------------------------------
 #       Kube Params

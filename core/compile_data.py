@@ -40,8 +40,8 @@ def run(conf):
             raise FileExistsError(f"Output file {save_path} already exists!")
         dm.load_pickle_data(train_path, valid_path, save_path, arch='mlp')
     else: # LSTM
-        # convert conf.data.wavelength from int to string and strip the decimal
-        wavelength = str(conf.data.wavelength).replace('.', '')
+        # convert conf.data.wv_dict[conf.data.wv_preprocess] from float to string and strip the decimal
+        wavelength = str(conf.data.wv_dict[conf.data.wv_preprocess]).replace('.', '')
         save_path = os.path.join(path_output, f'dataset_{wavelength}.pt')
         logging.debug(f"Save path: {save_path}")
         logging.debug(f"Save directory exists: {os.path.exists(os.path.dirname(save_path))}")

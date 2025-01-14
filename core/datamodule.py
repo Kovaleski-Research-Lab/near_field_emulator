@@ -39,6 +39,9 @@ class NF_Datamodule(LightningDataModule):
         self.mlp_strategy = conf.model.mlp_strategy
         self.patch_size = conf.model.patch_size
         self.path_data = conf.paths.data
+        self.wv_dict = conf.data.wv_dict
+        self.wv_train = conf.data.wv_train
+        self.wv_eval = conf.data.wv_eval
         logging.debug("datamodule.py - Setting path_data to {}".format(self.path_data))
         
         self.batch_size = conf.trainer.batch_size
@@ -61,15 +64,9 @@ class NF_Datamodule(LightningDataModule):
         self.n_cpus = n_cpus 
         logging.debug("NF_DataModule | Setting CPUS to {}".format(self.n_cpus))
 
-    def prepare_data(self):
-        # if necessary, preprocessing steps could be built in right here
-        #preprocess_data.preprocess_data(path = os.path.join(self.path_data, 'raw'))
-        pass
-
     # TODO: Getting a bit messy, consider abstraction/subclassing
     def setup(self, stage: Optional[str] = None):
-        datapath = self.get_datapath()
-        data = torch.load(datapath)
+        data = self.load_data_tensor(stage) # load all data
         if self.model_type == 'autoencoder': # pretraining
             self.dataset = format_ae_data(data, self.conf)
         elif self.model_type == 'mlp' or self.model_type == 'cvnn':
@@ -85,15 +82,50 @@ class NF_Datamodule(LightningDataModule):
             else:
                 self.index_map['train'].append(i)
                 
-    def get_datapath(self):
+    def get_datapath(self, wv_idx=None):
         """Based on params, return the correct dataset we'll be using"""
         if not self.conf.data.buffer:
             return os.path.join(self.path_data, 'preprocessed_data', 'dataset_nobuffer.pt')
         elif self.conf.model.arch == 'modelstm':
             return os.path.join(self.path_data, 'preprocessed_data', f"dataset_{self.conf.model.modelstm.method}.pt")
         else:
-            wv = str(self.conf.data.wavelength).replace('.', '')
+            if not wv_idx:
+                raise ValueError("Wavelength index is required for dataset retrieval")
+            wv = str(self.wv_dict[wv_idx]).replace('.', '')
             return os.path.join(self.path_data, 'preprocessed_data', f'dataset_{wv}.pt')
+        
+    def load_data_tensor(self, stage):
+        """Looks at params and loads the relevant dataset(s)"""
+        wv_idx = self.wv_train if stage == 'train' else self.wv_eval
+
+        if len(wv_idx) > 1:  # multiple wavelengths
+            data_combined = {'near_fields': [], 'phases': [], 
+                             'derivatives': [], 'radii': [], 
+                             'tag': [], 'wavelength': []}  # Dictionary to store concatenated data
+            for wv in tqdm(wv_idx, desc="Loading data...", ncols=80, file=sys.stdout, mininterval=1.0):
+                datapath = self.get_datapath(wv)
+                wv_data = torch.load(datapath)  # wv_data is a dictionary
+
+                # fetch the number of samples
+                num_samples = wv_data['near_fields'].shape[0]
+                
+                # Add everything to the combined dictionary
+                for key in wv_data.keys():
+                    data_combined[key].append(wv_data[key])
+                # add a new key to keep track of samples' wavelengths
+                data_combined['wavelength'].append(torch.full((num_samples,), self.wv_dict[wv], dtype=torch.float))  # Add wavelength identifier
+
+            # Concatenate all wavelengths' data along the sample dimension (dim=0)
+            for key in data_combined.keys():
+                data_combined[key] = torch.cat(data_combined[key], dim=0)
+
+            return data_combined
+        
+        else: # easy, just a single wavelength
+            datapath = self.get_datapath(wv_idx)
+            wv_data = torch.load(datapath)  # Return the dictionary as-is for a single wavelength
+            wv_data['wavelength'] = torch.full((wv_data['near_fields'].shape[0],), self.wv_dict[wv_idx], dtype=torch.float)
+            return wv_data
         
     def setup_fold(self, train_idx, val_idx):
         # create subsets for the current fold

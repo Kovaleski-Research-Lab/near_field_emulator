@@ -17,7 +17,7 @@ import utils.model_loader as model_loader
 from core import datamodule, custom_logger, train
 from conf.schema import load_config
 
-def plotting(conf, test_results, results_dir, fold_num=None, transfer=False):
+def plotting(conf, test_results, results_dir, fold_num=None):
     """
     The generation of a variety of plots and performance metrics
     """
@@ -29,10 +29,9 @@ def plotting(conf, test_results, results_dir, fold_num=None, transfer=False):
         eval.plot_loss(conf, save_fig=True)
         
     # Create subdirectories for different types of results
-    if transfer: # need to separate results if evaluating on all wavelengths
-        wl = str(conf.data.wavelength).replace('.', '')
-        results_dir = os.path.join(results_dir, f"eval_{wl}")
-        os.makedirs(results_dir, exist_ok=True)
+    wl = str(conf.data.wv_train)
+    results_dir = os.path.join(results_dir, f"eval_{wl}")
+    os.makedirs(results_dir, exist_ok=True)
     metrics_dir = os.path.join(results_dir, "performance_metrics")
     dft_dir = os.path.join(results_dir, "dft_plots")
     flipbook_dir = os.path.join(results_dir, "flipbooks")
@@ -78,7 +77,11 @@ def run(conf):
     results_dir = conf.paths.results
     
     # setup new parameter manager based on saved parameters
-    saved_conf = conf
+    saved_conf = load_config(os.path.join(results_dir, 'params.yaml'))
+    
+    # update select parameters to match current run
+    saved_conf.data.wv_eval = conf.data.wv_eval
+    saved_conf.directive = conf.directive # just to be safe
         
     # Load model checkpoint
     model_path = os.path.join(results_dir, 'model.ckpt')
@@ -117,15 +120,10 @@ def run(conf):
     # setup the trainer
     trainer = train.configure_trainer(saved_conf, logger, checkpoint_callback, early_stopping, progress_bar)
     
-    # determine if we're evaluating on a different wavelength
-    transfer_eval = saved_conf.data.eval_wavelength != saved_conf.data.wavelength
-    if transfer_eval:
-        saved_conf.data.wavelength = saved_conf.data.eval_wavelength
-    
     # init datamodule
     data_module = datamodule.select_data(saved_conf)
     data_module.prepare_data()
-    data_module.setup(stage='fit')
+    data_module.setup(stage='eval')
     
     if (saved_conf.trainer.cross_validation):
         with open(os.path.join(results_dir, "split_info.yaml"), 'r') as f:
@@ -141,6 +139,6 @@ def run(conf):
     
     # evaluate
     plotting(saved_conf, model_instance.test_results, 
-            results_dir, transfer=transfer_eval)
+            results_dir)
     
     
