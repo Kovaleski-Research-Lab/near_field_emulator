@@ -231,7 +231,7 @@ class MainConfig(BaseModel):
     @model_validator(mode="after")
     def validate_memory(cls, main):
         # need more memory when loading a bunch of wavelength datasets
-        if len(main.model.wv_train) > 2 or len(main.model.wv_eval) > 2:
+        if len(main.data.wv_train) > 2 or len(main.data.wv_eval) > 2:
             main.kube.train_job['num_mem_lim'] = '200Gi'
             main.kube.train_job['num_mem_req'] = '200Gi'
         else:
