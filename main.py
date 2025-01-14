@@ -1,4 +1,5 @@
 import os
+import shutil
 import argparse
 import yaml
 
@@ -20,6 +21,10 @@ if __name__ == '__main__':
     directive = config.directive
     
     if directive == 0:
+        # save exact config file for later use
+        os.makedirs(config.paths.results, exist_ok=True)
+        # copy args.config to results folder
+        shutil.copy(args.config, os.path.join(config.paths.results, 'config.yaml'))
         print("Training model...\n")
         train.run(config)
     elif directive == 1:

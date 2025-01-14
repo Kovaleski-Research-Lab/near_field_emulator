@@ -76,11 +76,11 @@ def plotting(conf, test_results, results_dir, fold_num=None):
     print(f"\nEvaluation complete. All results saved to: {results_dir}")
 
 def run(conf):
-    # use current params to get results directory
+    # use current config to get results directory
     results_dir = conf.paths.results
     
     # setup new parameter manager based on saved parameters
-    saved_conf = load_config(os.path.join(results_dir, 'params.yaml'))
+    saved_conf = load_config(os.path.join(results_dir, 'config.yaml'))
     
     # update select parameters to match current run
     saved_conf.data.wv_eval = conf.data.wv_eval

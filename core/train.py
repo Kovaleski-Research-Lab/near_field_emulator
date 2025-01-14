@@ -318,9 +318,9 @@ def run(conf):
     data_module.setup(stage='train')
     
     # Dump config for future reference
-    os.makedirs(conf.paths.results, exist_ok=True)
-    conf_dict = mapping.to_plain_dict(conf) # escape python object structure
-    yaml.dump(conf_dict, open(os.path.join(conf.paths.results, 'params.yaml'), 'w'))
+    #os.makedirs(conf.paths.results, exist_ok=True)
+    #conf_dict = mapping.to_plain_dict(conf) # escape python object structure
+    #yaml.dump(conf_dict, open(os.path.join(conf.paths.results, 'params.yaml'), 'w'))
     
     # run training
     if(conf.trainer.cross_validation):
