@@ -9,8 +9,11 @@ spec:
       restartPolicy: Never 
       containers:
         - name: ethan-lstm-train
-          image: docker.io/kovaleskilab/ml_basic:v4 
-          imagePullPolicy: IfNotPresent
+          image: docker.io/kovaleskilab/ml_basic:v4-kube 
+          imagePullPolicy: Always
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
           ports:
             - containerPort: 8880
           env:

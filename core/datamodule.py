@@ -102,9 +102,9 @@ class NF_Datamodule(LightningDataModule):
             data_combined = {'near_fields': [], 'phases': [], 
                              'derivatives': [], 'radii': [], 
                              'tag': [], 'wavelength': []}  # Dictionary to store concatenated data
-            for wv in tqdm(wv_idx, desc="Loading data...", ncols=80, file=sys.stdout, mininterval=1.0):
+            for wv in tqdm(wv_idx, desc="Loading data...", ncols=80, file=sys.stderr, mininterval=1.0):
                 datapath = self.get_datapath(wv)
-                wv_data = torch.load(datapath)  # wv_data is a dictionary
+                wv_data = torch.load(datapath, weights_only=True)
 
                 # fetch the number of samples
                 num_samples = wv_data['near_fields'].shape[0]
@@ -123,7 +123,7 @@ class NF_Datamodule(LightningDataModule):
         
         else: # easy, just a single wavelength
             datapath = self.get_datapath(wv_idx)
-            wv_data = torch.load(datapath)  # Return the dictionary as-is for a single wavelength
+            wv_data = torch.load(datapath, weights_only=True)
             wv_data['wavelength'] = torch.full((wv_data['near_fields'].shape[0],), self.wv_dict[wv_idx], dtype=torch.float)
             return wv_data
         

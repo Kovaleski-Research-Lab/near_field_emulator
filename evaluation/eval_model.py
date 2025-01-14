@@ -9,6 +9,9 @@ from sklearn.model_selection import KFold
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, EarlyStopping
 import gc
+import warnings
+
+warnings.filterwarnings("ignore")
 
 sys.path.append('../')
 import evaluation.evaluation as eval

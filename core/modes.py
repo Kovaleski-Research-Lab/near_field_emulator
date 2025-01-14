@@ -424,7 +424,7 @@ def encode_modes(data, config):
 def run(config):
     datasets_path = os.path.join(config.paths.data, 'preprocessed_data')
     # grab the original preprocessed data
-    full_data = torch.load(os.path.join(datasets_path, f'dataset_155.pt'))
+    full_data = torch.load(os.path.join(datasets_path, f'dataset_155.pt'), weights_only=True)
     # encode accordingly
     encoded_data = encode_modes(full_data, config)
     

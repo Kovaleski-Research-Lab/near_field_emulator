@@ -290,9 +290,9 @@ kube:
             template: kube/templates/data_job.txt
 
     train_job :
-        num_cpus : 16
-        num_mem_lim : 100Gi
-        num_mem_req : 100Gi
+        num_cpus : 24
+        num_mem_lim : 200Gi
+        num_mem_req : 200Gi
         num_gpus : 1
         kill_tags : [mlp,lstm,convlstm]
     
