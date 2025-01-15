@@ -32,7 +32,7 @@ def plotting(conf, test_results, results_dir, fold_num=None):
         eval.plot_loss(conf, save_fig=True)
         
     # Create subdirectories for different types of results
-    wl = str(conf.data.wv_train)
+    wl = str(conf.data.wv_eval)
     results_dir = os.path.join(results_dir, f"eval_{wl}")
     os.makedirs(results_dir, exist_ok=True)
     metrics_dir = os.path.join(results_dir, "performance_metrics")
