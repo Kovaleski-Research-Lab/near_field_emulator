@@ -9,7 +9,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 1
 
 #--------------------------------
@@ -44,7 +44,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 2
-    model_id: '15-234'
+    model_id: '15-1245'
 
     # General Model Parameters
 
@@ -256,8 +256,8 @@ data:
     buffer: True
     wv_dict: {'1': 1.06, '2': 1.3, '3': 1.55, '4': 1.65, '5': 2.881}
     wv_preprocess: '3'
-    wv_train: '234'
-    wv_eval: '2'
+    wv_train: '1245'
+    wv_eval: '3'
 
 #--------------------------------
 #       Kube Params
