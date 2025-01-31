@@ -10,7 +10,7 @@ spec:
       containers:
         - name: {{job_name}}
           image: {{path_image}} 
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           env:
             - name: PYTHONUNBUFFERED
               value: "1"
