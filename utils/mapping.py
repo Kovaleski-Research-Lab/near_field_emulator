@@ -92,7 +92,7 @@ def l1_norm(data):
 
 def l2_norm(data):
     """Assuming data of shape [samples, channels, H, W, slices]"""
-    sums_of_squares = (data**2).sum(dim=(2,3), keepdim=True)
+    sums_of_squares = (data**2).sum(dim=(4), keepdim=True)
     l2_norms = sums_of_squares.sqrt()
     l2_norms = l2_norms + 1e-8
     data = data / l2_norms
