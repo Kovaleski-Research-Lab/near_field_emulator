@@ -315,7 +315,7 @@ def run(conf):
     # Initialize: The datamodule
     data_module = datamodule.select_data(conf)
     data_module.prepare_data()
-    data_module.setup(stage='train')
+    data_module.setup(stage='fit')
     
     # Dump config for future reference
     #os.makedirs(conf.paths.results, exist_ok=True)

@@ -5,82 +5,147 @@ from scipy.special import genlaguerre
 import os
 import matplotlib.pyplot as plt
 import sys
-sys.stdout.reconfigure(line_buffering=True)
+import logging
+import numpy as np
+#sys.stdout.reconfigure(line_buffering=True)
     
-'''def svd(x, config):
+#logging.basicConfig(level=logging.DEBUG)
+
+def prepare_training_matrix(data):
     """
-    Computes the Singular Value Decomposition on the entire sequence for each sample.
+    data: shape [samples, r_i, xdim, ydim, slices]
+                e.g. [N_samples, channels, 166, 166, T]
     
-    Args:
-        x (torch.Tensor): Full dataset tensor of size [samples, r/i, xdim, ydim, slices]
-        config: Configuration parameters
+    Returns: M, shape [N_total, 166*166]
+             where N_total = (N_samples * channels * T).
+    """
+    samples, channels, xdim, ydim, num_slices = data.shape
+    
+    # Reshape to [N_total, 166, 166], then flatten
+    # First, permute so that slices is the second dimension:
+    # e.g. [N_samples, channels, T, 166, 166]
+    permuted = data.permute(0, 1, 4, 2, 3)
+    
+    # Now shape is [samples, channels, slices, 166, 166].
+    # We'll flatten samples*channels*slices into one dimension
+    # => new shape: [N_total, 166, 166]
+    reshaped = permuted.reshape(-1, xdim, ydim)  # -1 = samples*channels*slices
+    
+    # Flatten each slice to [1, 166*166]
+    # => shape [N_total, 166*166]
+    M = reshaped.view(-1, xdim*ydim)
+    
+    mean_vec = M.mean(dim=0, keepdim=True)
+    M_centered = M - mean_vec
+    
+    return M_centered, mean_vec
+
+def compute_global_svd(M_centered):
+    """
+    M_centered: [N_total, 166*166]
     
     Returns:
-        torch.Tensor: SVD-transformed tensor of size [samples, r_i, 1, k, slices]
+      U_big: shape [N_total, min(N_total, 27556)]
+      S_big: shape [min(N_total, 27556)]
+      V_big: shape [27556,  min(N_total, 27556)]
     """
-    samples, r_i, xdim, ydim, slices = x.size()
-    full_svd_params = []
+    U_big, S_big, V_big = torch.linalg.svd(M_centered, full_matrices=False)
     
-    # Iterate over each sample
-    for i in tqdm(range(samples), desc='Processing Samples'):
-        # Initialize a list to store real and imaginary channels
-        channels = []
-        
-        # Iterate over each channel (Real and Imaginary)
-        for c in range(r_i):
-            # Extract the data for the current channel and reshape it
-            # Original shape: [xdim, ydim, slices]
-            # Reshaped to: [xdim * ydim, slices]
-            channel_data = x[i, c].reshape(xdim * ydim, slices)  # Shape: [166*166, 63]
-            channels.append(channel_data)
-        
-        # Concatenate both channels along the first dimension
-        # Resulting shape: [2 * 166 * 166, 63]
-        aggregated_matrix = torch.cat(channels, dim=0)  # Shape: [2*166*166, 63]
-        
-        # Perform SVD on the aggregated matrix
-        # U: [2*166*166, 63], S: [63], Vh: [63, 63]
-        try:
-            u, s, vh = torch.linalg.svd(aggregated_matrix, full_matrices=False)
-        except RuntimeError as e:
-            print(f"SVD did not converge for sample {i}. Error: {e}")
-            # Handle SVD convergence issues, e.g., assign zeros or skip
-            continue
-        
-        # Store full decomposition for potential full reconstruction later
-        full_svd_params.append({
-            'u': u,      # [2*xdim*ydim, slices]
-            's': s,      # [slices]
-            'vh': vh     # [slices, slices]
-        })
-        
-        if i == 0:
-            # Find the optimal k that captures 95% of the energy
-            k = find_optimal_k_svd(s, threshold=0.95)
-            print(f"Optimal k was found to be: {k}")
-            # Initialize the output tensor with the desired shape
-            # [samples, r_i, 1, k, slices]
-            x_svd = torch.zeros(
-                samples, r_i, 1, k, slices, 
-                device=x.device, dtype=x.dtype
-            )
-            
-        # Extract the top k right singular vectors
-        # vh has shape [63, 63], so vh[:k, :] has shape [k, 63]
-        topk_v = vh[:k, :]  # Shape: [k, 63]
-        
-        # Assign the top k singular vectors to each channel and slice
-        # This implies that each slice j has a k-dimensional feature vector: topk_v[:, j]
-        # We'll broadcast this across both channels
-        
-        for c in range(r_i):
-            # Assign the topk_v for all slices to the output tensor
-            # x_svd shape: [samples, r_i, 1, k, slices]
-            # topk_v has shape [k, 63]
-            # We need to assign [k, slices] to [1, k, slices] for each channel
-            x_svd[i, c, 0, :, :] = topk_v  # Broadcasting the same topk_v across channels
+    return U_big, S_big, V_big
+
+def select_top_k(V_big, k):
+    """
+    V_big: shape [D, N_total] or [D, D] depending on your data
+           Typically [27556, R], where R = min(N_total, 27556).
+    Returns:
+      P: shape [D, k], the top-k principal components
+    """
+    # The columns of V_big are the right-singular vectors
+    # We want the first k columns
+    P = V_big[:, :k]   # shape [27556, k]
+    return P
+
+def encode_slice(x_2d, P, mean_vec=None):
+    """
+    x_2d: shape [166, 166]  (or flattened to [1, 27556])
+    P   : shape [27556, k]
+    mean_vec: shape [27556,] or None (if no mean-centering used)
     
-    return x_svd, full_svd_params'''
+    Returns: a, shape [k,]
+    """
+    D = 166*166
+    # Flatten the 2D slice
+    x_flat = x_2d.view(-1)  # shape [27556]
+    
+    if mean_vec is not None:
+        x_flat_centered = x_flat - mean_vec
+    else:
+        x_flat_centered = x_flat
+    
+    # a = x^T * P => shape [k]
+    # because x_flat_centered is [1, 27556], P is [27556, k]
+    a = x_flat_centered @ P  # [k]
+    
+    return a
+
+def decode_slice(a, P, mean_vec=None):
+    """
+    a: shape [k,]
+    P: shape [27556, k]
+    
+    Returns: reconstructed 2D slice [166,166]
+    """
+    x_flat_approx = a @ P.t()  # shape [27556]
+    if mean_vec is not None:
+        x_flat_approx = x_flat_approx + mean_vec
+    
+    x_2d_approx = x_flat_approx.view(166, 166)
+    return x_2d_approx
+
+def encode_dataset(train_data, P, mean_vec=None):
+    """
+    train_data: shape [samples, channels, 166, 166, T]
+    P         : shape [27556, k]
+    mean_vec  : shape [27556, ] or None
+    
+    Returns:
+      a_data: shape [samples, channels, T, k]
+         (the encoded latent vectors for each slice)
+    """
+    samples, channels, xdim, ydim, slices = train_data.shape
+    k = P.shape[1]
+    a_data = torch.zeros(samples, channels, slices, k, dtype=train_data.dtype)
+    
+    # We'll do a triple nested loop or vectorized approach
+    for i in tqdm(range(samples), desc='Encoding Samples'):
+        for c in range(channels):
+            for t in range(slices):
+                x_2d = train_data[i, c, :, :, t]
+                a = encode_slice(x_2d, P, mean_vec)
+                a_data[i, c, t] = a
+    
+    return a_data  # shape [samples, channels, slices, k]
+
+def decode_dataset(a_data, P, mean_vec=None):
+    """
+    a_data: shape [samples, channels, slices, k]
+    P: shape [27556, k]
+    mean_vec: shape [27556, ] or None
+    """
+    samples, channels, slices, k = a_data.shape
+    xdim, ydim = 166, 166
+    x_data = torch.zeros(samples, channels, slices, xdim, ydim)
+    
+    for i in tqdm(range(samples), desc='Decoding Samples'):
+        for c in range(channels):
+            for t in range(slices):
+                a = a_data[i, c, t]
+                x_2d = decode_slice(a, P, mean_vec)
+                x_data[i, c, t] = x_2d
+                
+    return x_data
+
+
     
 def svd(field):
     """
@@ -105,7 +170,12 @@ def svd(field):
 
     # 3) Find optimal k
     #k_opt = find_optimal_k_svd(S, threshold=0.95)
-    k_opt = 3 # 3 seems best after analyzing the data
+    k_opt = 10 # 3 seems best after analyzing the data
+    
+    '''# Diagnostic: Check immediate reconstruction
+    direct_recon = U @ torch.diag(S) @ Vh
+    immediate_error = torch.abs(field - direct_recon).max()
+    logging.debug(f"Immediate SVD reconstruction error: {immediate_error}")'''
     
     # 4) store the full SVD params
     full_svd_params = {
@@ -115,53 +185,43 @@ def svd(field):
     }
 
     # 5) Return the top-k singular values
-    top_k_s = S[:k_opt]  # shape (k,)
-    return top_k_s, full_svd_params
+    #top_k_s = S[:k_opt]  # shape (k,)
+    return full_svd_params
 
 def encode_svd(x):
     samples, r_i, xdim, ydim, slices = x.size()
 
-    # 1) Prepare nested lists for storing results
-    #    - top_k_s_list[i][c][j] will be a 1D tensor with the top singular values for that slice
-    #    - svd_params_list[i][c][j] will be the dictionary of {U, S, Vh} for that slice
-    top_k_s_list = [[[None for _ in range(slices)] for _ in range(r_i)] for _ in range(samples)]
-    svd_params_list = [[[None for _ in range(slices)] for _ in range(r_i)] for _ in range(samples)]
+    # Pre-allocate tensors for SVD parameters
+    U_params = torch.zeros(samples, r_i, slices, xdim, xdim)
+    S_params = torch.zeros(samples, r_i, slices, xdim)
+    Vh_params = torch.zeros(samples, r_i, slices, xdim, xdim)
+
+    k_opt = 10
     
-    # We'll also keep a flat list of top_k_s lengths to find min_k across all slices
-    #all_top_k_lengths = []
-    
-    # 2) Iterate over each sample, channel, and slice
     for i in tqdm(range(samples), desc='Processing Samples', mininterval=0.1):
         for c in range(r_i):
             for j in range(slices):
-                # Extract the 2D matrix [xdim, ydim]
                 slice_2d = x[i, c, :, :, j]
+                params = svd(slice_2d)
                 
-                # 3) Call the base SVD function
-                single_top_k_s, single_svd_params = svd(slice_2d)
-                top_k_s_list[i][c][j] = single_top_k_s
-                svd_params_list[i][c][j] = single_svd_params
-                #all_top_k_lengths.append(len(single_top_k_s))
-
-    # 4) Find the global minimum k across all slices
-    #min_k = min(all_top_k_lengths) if len(all_top_k_lengths) > 0 else 0
-    #print(f"Minimum k across all slices: {min_k}")
-
-    # 5) Now we build a 4D tensor for the top-k singular values: [samples, r_i, k, slices]
-    top_k_s = torch.zeros((samples, r_i, 3, slices), dtype=x.dtype, device=x.device)
-
-    # Fill in that 4D tensor
-    for i in range(samples):
-        for c in range(r_i):
-            for j in range(slices):
-                # each top_k_s_list[i][c][j] is a 1D tensor of shape [k]
-                truncated = top_k_s_list[i][c][j]
-                top_k_s[i, c, :, j] = truncated
+                # Store parameters in tensors
+                U_params[i, c, j] = params['U']
+                S_params[i, c, j] = params['S']
+                Vh_params[i, c, j] = params['Vh']
                 
-    # to be respectful of LSTM process, we need a dummy dim 2
-    top_k_s = top_k_s.unsqueeze(2) # [samples, r_i, 1, min_k, slices]
-
-    return top_k_s, svd_params_list
+    # permute to adhere to traditional order
+    U_params = U_params.permute(0, 1, 3, 4, 2)
+    S_params = S_params.permute(0, 1, 3, 2)
+    Vh_params = Vh_params.permute(0, 1, 3, 4, 2)
+    
+    # Package SVD params in a dictionary of tensors
+    svd_params = {
+        'U': U_params,
+        'S': S_params,
+        'Vh': Vh_params
+    }
+    
+    return svd_params
 
 
 # I'm at: need a wrapper function to do this for each channel, slice, sample
@@ -191,42 +251,72 @@ def find_optimal_k_svd(s, threshold=0.95):
     
     return k_opt
 
-def reconstruct_svd(top_k_s, svd_params):
+def reconstruct_svd(svd_params):
     """
     Reconstructs the original data from the SVD decomposition.
     """
-    U = svd_params['U']   # [166, 166]
-    S = svd_params['S']   # [166]
-    Vh = svd_params['Vh'] # [166, 166]
+    U_k = svd_params['U']   # [166, k]
+    S_k = svd_params['S']   # [166]
+    Vh_k = svd_params['Vh'] # [166, k]
 
     # Number of components we are reconstructing with
-    k = top_k_s.shape[-1]
+    #k = top_k_s.shape[-1]
+    
+    # replace top k singular values with the one's passed in (i.e. the preds)
+    #S[:k] = top_k_s
 
     # U_k: left singular vectors corresponding to top k singular values
-    U_k = U[:, :k]  # [166, k]
-
+    #U_k = U[:, :k]  # [166, k]
     # Construct diagonal matrix from top_k_s
     # shape: (k, k)
-    S_k = torch.diag(top_k_s)
-
+    #S_k = torch.diag(top_k_s)
     # Vh_k: right singular vectors corresponding to top k singular values
-    Vh_k = Vh[:k, :] # [k, 166]
+    #Vh_k = Vh[:k, :] # [k, 166]
+    
+    # convert to tensors
+    S_k = torch.tensor(S_k)
+    U_k = torch.tensor(U_k)
+    Vh_k = torch.tensor(Vh_k)
 
     # Approximate reconstruction: M_approx = U_k @ S_k @ Vh_k
-    M_approx = U_k @ S_k @ Vh_k  # [166, 166]
+    M_approx = U_k @ np.diag(S_k) @ Vh_k
+    # same as above but in numpy
 
     return M_approx
 
-def reconstruct_full_dataset(preds, full_svd_params):
-    # preds is [samples, r_i, 1, k, seq_len]
-    # full_svd_params is a list of dicts, each with U, S, Vh
-    # we need to reconstruct each slice, then concatenate
-    samples, r_i, k, seq_len = preds.size()
-    reconstructed = torch.zeros_like(preds)
-    for i in range(samples):
-        for j in range(seq_len):
-            reconstructed[i, :, :, :, j] = reconstruct_svd(preds[i, :, :, :, j], full_svd_params[i])
-    return reconstructed
+def reconstruct_full_dataset(x_svd, conf):
+    samples = x_svd.shape[0]
+    r_i = x_svd.shape[2]
+    slices = x_svd.shape[1]
+    k = conf.model.modelstm.k
+    u_size = 166 * k
+    vh_size = 166 * k
+    x_svd = x_svd.squeeze(3) # [samples, slices, r_i, U + S + Vh]
+    reconstructed = torch.zeros(samples, slices, r_i, 166, 166)
+    for i in tqdm(range(samples), desc='Processing Samples', mininterval=0.1):
+        for c in range(r_i):
+            for j in range(slices):
+                # x_svd is [samples, slices, r_i, U + S + Vh]
+                svd_params = {
+                    'U': x_svd[i, j, c, :u_size].reshape(166, k),
+                    'S': x_svd[i, j, c, u_size:u_size+k].reshape(k),
+                    'Vh': x_svd[i, j, c, u_size+k:u_size+k+vh_size].reshape(k, 166)
+                }
+                reconstructed[i, j, c, :, :] = reconstruct_svd(svd_params)
+                
+    return reconstructed.cpu().numpy()
+
+def select_top_k_svd(full_svd_params, k):
+    U_full = full_svd_params['U']
+    S_full = full_svd_params['S']
+    Vh_full = full_svd_params['Vh']
+    
+    # select top k singular values
+    U_k = U_full[:, :, :, :k, :]
+    S_k = S_full[:, :, :k, :]
+    Vh_k = Vh_full[:, :, :k, :, :]
+    
+    return U_k, S_k, Vh_k
 
 def random_proj(x, config):
     """
@@ -405,8 +495,15 @@ def encode_modes(data, config):
     method = config.model.modelstm.method
     
     if method == 'svd': # encoding singular value decomposition
-        encoded_fields, full_svd_params = encode_svd(near_fields)
-        data['full_svd_params'] = full_svd_params
+        #encoded_fields = encode_svd(near_fields)
+        M_centered, mean_vec = prepare_training_matrix(near_fields)
+        U_big, S_big, V_big = compute_global_svd(M_centered)
+        encoded_fields = {
+            'mean_vec': mean_vec,
+            'U': U_big,
+            'S': S_big,
+            'Vh': V_big
+        }
     elif method == 'random': # random projection / Johnson-Lindenstrauss
         encoded_fields = random_proj(near_fields, config)
     elif method == 'gauss': # gauss-laguerre modes
@@ -423,24 +520,31 @@ def encode_modes(data, config):
 
 def run(config):
     datasets_path = os.path.join(config.paths.data, 'preprocessed_data')
-    # grab the original preprocessed data
-    full_data = torch.load(os.path.join(datasets_path, f'dataset_155.pt'), weights_only=True)
-    # encode accordingly
-    encoded_data = encode_modes(full_data, config)
-    
-    if config.model.modelstm.method == 'svd':
-        # save the full SVD params
-        params_path = os.path.join(datasets_path, f"svd_params.pt")
-        torch.save(encoded_data['full_svd_params'], params_path)
-        del encoded_data['full_svd_params'] # remove from base dataset
+    if config.directive == 5: # encoding
+        # grab the original preprocessed data
+        full_data = torch.load(os.path.join(datasets_path, f'dataset_155.pt'), weights_only=True)
+
+        mask = full_data['tag'] == 1
         
-    # construct appropriate save path
-    save_path = os.path.join(datasets_path, f"dataset_{config.model.modelstm.method}.pt")
-    if os.path.exists(save_path):
-        raise FileExistsError(f"Output file {save_path} already exists!")
-    
-    # save the new data to disk
-    torch.save(encoded_data, save_path)
+        filtered_data = {
+            'near_fields': full_data['near_fields'][mask],
+            'tag': full_data['tag'][mask]
+        }
+
+        # encode accordingly
+        encoded_data = encode_modes(filtered_data, config)
+            
+        # construct appropriate save path
+        save_path = os.path.join(datasets_path, f"dataset_{config.model.modelstm.method}.pt")
+        if os.path.exists(save_path):
+            raise FileExistsError(f"Output file {save_path} already exists!")
+        
+        # save the new data to disk
+        torch.save(encoded_data, save_path)
+    else: # directive == 6 and we're decoding #TODO right now this only works for SVD
+        encoded_data = torch.load(os.path.join(datasets_path, f'dataset_{config.model.modelstm.method}.pt'))
+        svd_params = torch.load(os.path.join(datasets_path, f'svd_params.pt'))
+        
 
     
     

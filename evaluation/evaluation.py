@@ -136,7 +136,7 @@ def get_model_identifier(conf):
     elif model_type == 'modelstm':
         method = conf.model.modelstm.method
         lstm_num_layers = conf.model.modelstm.num_layers
-        lstm_i_dims = conf.model.modelstm.i_dims
+        lstm_i_dims = conf.model.modelstm.spatial * conf.model.modelstm.k * 2 + conf.model.modelstm.k
         lstm_h_dims = conf.model.modelstm.h_dims
         seq_len = conf.model.seq_len
         return (f'{title} - encoding: {method}, lr: {lr}, lr_scheduler: {lr_scheduler}, optimizer: {optimizer}, '
@@ -290,7 +290,7 @@ def calculate_metrics(truth, pred):
     """
     truth_torch = torch.tensor(truth) if not isinstance(truth, torch.Tensor) else truth
     pred_torch  = torch.tensor(pred)  if not isinstance(pred, torch.Tensor)  else pred
-
+    # compute metrics
     mae = np.mean(np.abs(truth - pred))
     rmse = np.sqrt(np.mean((truth - pred) ** 2))
     correlation = np.corrcoef(truth.flatten(), pred.flatten())[0, 1]

@@ -42,5 +42,8 @@ if __name__ == '__main__':
     elif directive == 5:
         print(f"Encoding {config.model.modelstm.method} modes...")
         modes.run(config)
+    elif directive == 6:
+        print(f'Reconstructing {config.model.modelstm.method} modes...')
+        modes.run(config)
     else:
         raise NotImplementedError(f'config.yaml: directive: {directive} is not a valid directive.')

@@ -82,3 +82,18 @@ def to_plain_dict(obj):
         return [to_plain_dict(v) for v in obj]
     else:
         return obj
+    
+def l1_norm(data):
+    """Assuming data of shape [samples, channels, H, W, slices]"""
+    sums = data.sum(dim=(4), keepdim=True)
+    sums = sums + 1e-8 # avoid killing puppies
+    data = data / sums
+    return data
+
+def l2_norm(data):
+    """Assuming data of shape [samples, channels, H, W, slices]"""
+    sums_of_squares = (data**2).sum(dim=(4), keepdim=True)
+    l2_norms = sums_of_squares.sqrt()
+    l2_norms = l2_norms + 1e-8
+    data = data / l2_norms
+    return data

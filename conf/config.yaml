@@ -5,12 +5,13 @@
 # - 3: MEEP simulations
 # - 4: data preprocessing and formatting for model
 # - 5: mode encoding
+# - 6: mode reconstruction
 # deployment: Deployment mode
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
-deployment: 1
+directive: 0
+deployment: 0
 
 #--------------------------------
 #       General Params
@@ -44,7 +45,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 2
-    model_id: '15-24'
+    model_id: 'norm-test'
 
     # General Model Parameters
 
@@ -97,9 +98,6 @@ model:
         h_dims: 256
 
     # Mode-LSTM Parameters - LSTM but data has already been encoded
-    # - i_dims: input dimensionality - depends on the encoding method
-    # ----> svd: spatial * k (optimal) * 2
-    # ----> random: any perfect square
     # - spatial: spatial size of the input
     # - w0: beam waist parameter (laguerre-gaussian)
     # - p_max: radial index max (laguerre-gaussian)
@@ -108,8 +106,8 @@ model:
 
     modelstm:
         num_layers: 1
-        i_dims: 6 
         h_dims: 64
+        k: 15
         spatial: 166
         w0: 1.0
         p_max: 39
@@ -251,13 +249,15 @@ data:
     # - wv_preprocess, wv_train and wv_eval refer to indices of wavelengths in wv_dict
     # ---> they control which wavelengths are used for their respective tasks
     # ---> wv_preprocess has to be a single value, wv_train and wv_eval can be multiple values
+    # - normalize: True/False - whether to normalize the data before training
     n_cpus: 5
     n_folds: 3
     buffer: True
     wv_dict: {'1': 1.06, '2': 1.3, '3': 1.55, '4': 1.65, '5': 2.881}
     wv_preprocess: '3'
-    wv_train: '24'
+    wv_train: '3'
     wv_eval: '3'
+    normalize: True
 
 #--------------------------------
 #       Kube Params

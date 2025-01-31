@@ -26,8 +26,10 @@ def select_model(model_config, fold_idx=None):
     elif model_type == 'mlp' or model_type == 'cvnn':
         network = WaveMLP(model_config, fold_idx)
     # mode lstm is just the lstm but on epre-encoded data
-    elif model_type == 'lstm' or model_type == 'modelstm':
+    elif model_type == 'lstm':
         network = WaveLSTM(model_config, fold_idx)
+    elif model_type == 'modelstm':
+        network = WaveModeLSTM(model_config, fold_idx)
     elif model_type == 'convlstm':
         network = WaveConvLSTM(model_config, fold_idx)
     elif model_type == 'ae-lstm':

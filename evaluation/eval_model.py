@@ -17,7 +17,7 @@ sys.path.append('../')
 import evaluation.evaluation as eval
 import evaluation.inference as inference
 import utils.model_loader as model_loader
-from core import datamodule, custom_logger, train
+from core import datamodule, custom_logger, train, modes
 from conf.schema import load_config
 
 def plotting(conf, test_results, results_dir, fold_num=None):
@@ -126,7 +126,7 @@ def run(conf):
     # init datamodule
     data_module = datamodule.select_data(saved_conf)
     data_module.prepare_data()
-    data_module.setup(stage='eval')
+    data_module.setup(stage='test')
     
     if (saved_conf.trainer.cross_validation):
         with open(os.path.join(results_dir, "split_info.yaml"), 'r') as f:
@@ -141,6 +141,55 @@ def run(conf):
     trainer.test(model_instance, dataloaders=[data_module.val_dataloader(), data_module.train_dataloader()])
     
     # evaluate
+    if saved_conf.model.arch == 'modelstm':
+        
+        # print a bunch of stuff
+        print(f"model_instance.test_results['valid']['nf_pred']: {model_instance.test_results['valid']['nf_pred']}")
+        print(f"model_instance.test_results['valid']['nf_truth'].shape: {model_instance.test_results['valid']['nf_truth'].shape}")
+        print(f"model_instance.test_results['train']['nf_pred'].shape: {model_instance.test_results['train']['nf_pred'].shape}")
+        print(f"model_instance.test_results['train']['nf_truth'].shape: {model_instance.test_results['train']['nf_truth'].shape}")
+        print(f"data_module.P.shape: {data_module.P.shape}")
+        print(f"data_module.mean_vec.shape: {data_module.mean_vec.shape}")
+        
+        nf_pred_valid = model_instance.test_results['valid']['nf_pred'] * 180 / np.pi
+        nf_truth_valid = model_instance.test_results['valid']['nf_truth'] * 180 / np.pi
+        nf_pred_train = model_instance.test_results['train']['nf_pred'] * 180 / np.pi
+        nf_truth_train = model_instance.test_results['train']['nf_truth'] * 180 / np.pi    
+        
+        print(f"nf_pred_valid.shape before decode_dataset called: {nf_pred_valid.shape}")
+        print(f"nf_pred_valid.dtype: {nf_pred_valid.dtype}")
+        
+        # decode the data
+        P = data_module.P
+        mean_vec = data_module.mean_vec
+        
+        nf_pred_valid = torch.from_numpy(nf_pred_valid)
+        nf_truth_valid = torch.from_numpy(nf_truth_valid)
+        nf_pred_train = torch.from_numpy(nf_pred_train)
+        nf_truth_train = torch.from_numpy(nf_truth_train)
+        
+        nf_pred_valid = modes.decode_dataset(nf_pred_valid.squeeze(3), P, mean_vec)
+        nf_truth_valid = modes.decode_dataset(nf_truth_valid.squeeze(3), P, mean_vec)
+        nf_pred_train = modes.decode_dataset(nf_pred_train.squeeze(3), P, mean_vec)
+        nf_truth_train = modes.decode_dataset(nf_truth_train.squeeze(3), P, mean_vec)
+
+        print(f"nf_pred_valid.shape after decode_dataset called: {nf_pred_valid.shape}")
+        
+        # update the test results
+        model_instance.test_results['valid']['nf_pred'] = nf_pred_valid.detach().cpu().numpy()
+        model_instance.test_results['valid']['nf_truth'] = nf_truth_valid.detach().cpu().numpy()
+        model_instance.test_results['train']['nf_pred'] = nf_pred_train.detach().cpu().numpy()
+        model_instance.test_results['train']['nf_truth'] = nf_truth_train.detach().cpu().numpy()
+        
+        
+        '''svd_params_valid = model_instance.test_results['valid']
+        svd_params_train = model_instance.test_results['train']
+        model_instance.test_results['valid']['nf_pred'] = modes.reconstruct_full_dataset(svd_params_valid['nf_pred'], saved_conf)
+        model_instance.test_results['valid']['nf_truth'] = modes.reconstruct_full_dataset(svd_params_valid['nf_truth'], saved_conf)
+        model_instance.test_results['train']['nf_pred'] = modes.reconstruct_full_dataset(svd_params_train['nf_pred'], saved_conf)
+        model_instance.test_results['train']['nf_truth'] = modes.reconstruct_full_dataset(svd_params_train['nf_truth'], saved_conf)
+        print(model_instance.test_results['valid']['nf_pred'].shape)'''
+        
     plotting(saved_conf, model_instance.test_results, 
             results_dir)
     

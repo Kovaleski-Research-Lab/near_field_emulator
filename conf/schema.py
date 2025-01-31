@@ -32,8 +32,8 @@ class AutoencoderConfig(BaseModel):
 
 class ModesConfig(BaseModel):
     num_layers: int
-    i_dims: int
     h_dims: int
+    k: int
     spatial: int
     w0: float
     p_max: int
@@ -139,6 +139,7 @@ class DataConfig(BaseModel):
     wv_preprocess: str
     wv_train: str
     wv_eval: str
+    normalize: bool = True
     
     @field_validator("wv_preprocess", mode="before")
     def validate_pp_wavelength(cls, value):

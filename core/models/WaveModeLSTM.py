@@ -1,15 +1,17 @@
 import torch
 from .WaveModel import WaveModel
 
-class WaveLSTM(WaveModel):
+class WaveModeLSTM(WaveModel):
     """Near Field Response Time Series Prediction Model  
-    Architecture: LSTM"""
+    Architecture: ModeLSTM"""
     def __init__(self, model_config, fold_idx=None):
         super().__init__(model_config, fold_idx)
 
     def create_architecture(self):
-        self.arch_conf = self.conf.lstm
-        i_dims = self.arch_conf.i_dims
+        self.arch_conf = self.conf.modelstm
+        # svd approach: [samples, 2, 1, (166*k + k + k*166), 63]
+        #i_dims = 2 * (self.arch_conf.spatial * self.arch_conf.k * 2 + self.arch_conf.k)
+        i_dims = 2 * self.arch_conf.k
             
         self.arch = torch.nn.LSTM(input_size=i_dims,
                                     hidden_size=self.arch_conf.h_dims,
@@ -26,7 +28,7 @@ class WaveLSTM(WaveModel):
             h, c = self.init_hidden(batch)
             meta = (h, c)          
             
-        # flatten spatial and r/i dims - (batch_size, seq_len, input_size)
+        # flatten spatial dims - (batch_size, seq_len, input_size)
         x = x.view(batch, seq_len, -1)
         
         predictions = [] # to store each successive pred as we pass through
@@ -82,7 +84,7 @@ class WaveLSTM(WaveModel):
         batch_size, input_seq_len, r_i, xdim, ydim = samples.size()
         
 
-        # flatten spatial and r/i dims - (batch_size, seq_len, input_size)
+        # flatten spatial dims - (batch_size, seq_len, input_size)
         samples = samples.view(batch_size, input_seq_len, -1)
         labels = labels.view(batch_size, self.seq_len, -1)
         
