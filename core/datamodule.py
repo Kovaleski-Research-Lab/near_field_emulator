@@ -69,6 +69,8 @@ class NF_Datamodule(LightningDataModule):
         # load the correct data in
         if stage == "fit" or stage == None:
             data = self.load_data_tensor(self.wv_train)
+            if self.normalize:
+                data['near_fields'] = mapping.l2_norm(data['near_fields'])
         elif stage == "test":
             data = self.load_data_tensor(self.wv_eval)
             
@@ -120,9 +122,6 @@ class NF_Datamodule(LightningDataModule):
                 for wv in tqdm(wv_idx, desc="Loading data...", ncols=80, file=sys.stderr, mininterval=1.0, dynamic_ncols=True):
                     datapath = self.get_datapath(wv)
                     wv_data = torch.load(datapath, weights_only=True)
-                    
-                    if self.normalize:
-                        wv_data['near_fields'] = mapping.l2_norm(wv_data['near_fields'])
 
                     # fetch the number of samples
                     num_samples = wv_data['near_fields'].shape[0]
@@ -142,9 +141,6 @@ class NF_Datamodule(LightningDataModule):
             else: # easy, just a single wavelength
                 datapath = self.get_datapath(wv_idx)
                 wv_data = torch.load(datapath, weights_only=True)
-                
-                if self.normalize:
-                    wv_data['near_fields'] = mapping.l2_norm(wv_data['near_fields'])
                 
                 wv_data['wavelength'] = torch.full((wv_data['near_fields'].shape[0],), self.wv_dict[wv_idx], dtype=torch.float)
                 return wv_data

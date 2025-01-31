@@ -28,11 +28,11 @@ spec:
                   python3 /develop/code/near_field_emulator/main.py --config /develop/code/near_field_emulator/conf/config.yaml"]
           resources:
             limits:
-              memory: 300Gi 
+              memory: 150Gi 
               cpu: 24 
               nvidia.com/a100: 1
             requests:
-              memory: 300Gi
+              memory: 150Gi
               cpu: 24
               nvidia.com/a100: 1
           volumeMounts:
