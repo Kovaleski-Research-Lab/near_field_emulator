@@ -73,6 +73,9 @@ class NF_Datamodule(LightningDataModule):
                 data['near_fields'] = mapping.l2_norm(data['near_fields'])
         elif stage == "test":
             data = self.load_data_tensor(self.wv_eval)
+            if self.conf.model.full_pipeline and self.conf.model.arch == 'lstm':
+                mlp_preds = torch.load(os.path.join(self.conf.paths.mlp_results, 'preds.pt'))
+                data['near_fields'][..., 0] = mlp_preds # replace first slices with the MLP outputs
             
         # format data based on model type
         if self.model_type == 'autoencoder': # pretraining

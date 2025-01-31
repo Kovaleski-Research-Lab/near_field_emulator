@@ -10,7 +10,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 0
 
 #--------------------------------
@@ -43,9 +43,11 @@ model:
     # *** Learning a reconstrutible latent representation of the fields ***
         # - 8: Autoencoder - Used in conjunction with arch 4, 5
     # - model_id: model identifier / name
+    # - full_pipeline: True/False - whether to perform the full pipeline (MLP -> LSTM)
 
-    arch: 0
+    arch: 2
     model_id: 'BASELINE'
+    full_pipeline: False
 
     # General Model Parameters
 
@@ -177,7 +179,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 100 # maximum
+    num_epochs: 50 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
@@ -206,7 +208,8 @@ paths:
     results: 'results/meep_meep/'
     volumes: 'nfe-data/volumes'
     library: 'code/near_field_emulator/utils/neighbors_library_allrandom.pkl'
-    pretrained_ae: 'meep_meep/autoencoder/model_ae-v1/'
+    pretrained_ae: 'autoencoder/model_ae-v1/'
+    mlp_results: 'mlp/model_BASELINE/'
 
 #--------------------------------
 #       Physical Params

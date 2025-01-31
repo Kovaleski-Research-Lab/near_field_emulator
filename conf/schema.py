@@ -48,6 +48,7 @@ class DiffusionConfig(BaseModel):
 class ModelConfig(BaseModel):
     arch: str # an int in config.yaml
     model_id: str
+    full_pipeline: bool
     optimizer: str
     learning_rate: float = 1e-3
     lr_scheduler: Literal['CosineAnnealingLR', 'ReduceLROnPlateau']
@@ -98,6 +99,7 @@ class PathsConfig(BaseModel):
     volumes: str
     library: str
     pretrained_ae: str
+    mlp_results: str
     
     @model_validator(mode="after")
     def validate_paths(cls, model):
@@ -109,6 +111,7 @@ class PathsConfig(BaseModel):
         model.volumes = os.path.join(model.data, model.volumes)
         model.library = os.path.join(model.root, model.library)
         model.pretrained_ae = os.path.join(model.results, model.pretrained_ae)
+        model.mlp_results = os.path.join(model.results, model.mlp_results)
         return model
     
     @model_validator(mode="after")

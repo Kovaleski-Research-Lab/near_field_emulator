@@ -186,6 +186,14 @@ def run(conf):
         model_instance.test_results['train']['nf_truth'] = modes.reconstruct_full_dataset(svd_params_train['nf_truth'], saved_conf)
         print(model_instance.test_results['valid']['nf_pred'].shape)'''
         
+    if conf.model.full_pipeline:
+        if conf.model.arch == 'mlp':
+            # stack pred train and valid together into one tensor and save to a torch .pt file
+            pred_train = torch.from_numpy(model_instance.test_results['train']['nf_pred'])
+            pred_valid = torch.from_numpy(model_instance.test_results['valid']['nf_pred'])
+            pred = torch.cat((pred_train, pred_valid), dim=0)
+            torch.save(pred, os.path.join(results_dir, 'preds.pt'))
+
     plotting(saved_conf, model_instance.test_results, 
             results_dir)
     
