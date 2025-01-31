@@ -10,7 +10,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 0
+directive: 1
 deployment: 0
 
 #--------------------------------
