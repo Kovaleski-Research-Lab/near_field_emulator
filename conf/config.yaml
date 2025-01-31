@@ -45,7 +45,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 0
-    model_id: 'BASELINE-last-slice'
+    model_id: 'BASELINE'
 
     # General Model Parameters
 
