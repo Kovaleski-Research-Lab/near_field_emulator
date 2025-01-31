@@ -244,7 +244,7 @@ class WaveMLP_Dataset(Dataset):
         else: # using newer dataset (dataset.pt), simulated for time series models
             temp_nf_1550 = self.data['near_fields'] # [num_samples, 2, 166, 166, 63]
             # grab the final slice
-            self.near_fields = temp_nf_1550[:, :, :, :, -1] # [num_samples, 2, 166, 166]
+            self.near_fields = temp_nf_1550[:, :, :, :, 0] # [num_samples, 2, 166, 166]
             
 class WaveModel_Dataset(Dataset):
     """

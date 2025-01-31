@@ -9,8 +9,11 @@ spec:
       restartPolicy: Never 
       containers:
         - name: ethan-mlp-train
-          image: docker.io/kovaleskilab/ml_basic:v4 
+          image: docker.io/kovaleskilab/ml_basic:v4-kube 
           imagePullPolicy: IfNotPresent
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
           ports:
             - containerPort: 8880
           env:
@@ -25,12 +28,12 @@ spec:
                   python3 /develop/code/near_field_emulator/main.py --config /develop/code/near_field_emulator/conf/config.yaml"]
           resources:
             limits:
-              memory: 100Gi 
-              cpu: 16 
+              memory: 150Gi 
+              cpu: 24 
               nvidia.com/a100: 1
             requests:
-              memory: 100Gi
-              cpu: 16
+              memory: 150Gi
+              cpu: 24
               nvidia.com/a100: 1
           volumeMounts:
             - name: nfe-data

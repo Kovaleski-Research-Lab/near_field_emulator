@@ -10,7 +10,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 0
+directive: 1
 deployment: 0
 
 #--------------------------------
@@ -71,15 +71,15 @@ model:
     # - patch_size: patch height/width for patch wise or distributed subset
 
     mlp_real:
-        layers: [64, 512]
+        layers: [64, 512, 1024]
         activation: 'relu'
 
     mlp_imag:
-        layers: [64, 512]
+        layers: [64, 512, 1024]
         activation: 'relu'
 
     cvnn:
-        layers: [64, 512]
+        layers: [64, 512, 1024]
         activation: 'complexrelu'
 
     mlp_strategy: 0

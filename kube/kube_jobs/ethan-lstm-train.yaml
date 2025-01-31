@@ -10,7 +10,7 @@ spec:
       containers:
         - name: ethan-lstm-train
           image: docker.io/kovaleskilab/ml_basic:v4-kube 
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           env:
             - name: PYTHONUNBUFFERED
               value: "1"
