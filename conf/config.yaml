@@ -10,7 +10,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 0
 
 #--------------------------------
@@ -45,7 +45,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 2
-    model_id: 'norm-test'
+    model_id: 'norm-per-slice'
 
     # General Model Parameters
 
