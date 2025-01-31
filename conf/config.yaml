@@ -10,7 +10,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 0
 
 #--------------------------------
@@ -44,8 +44,8 @@ model:
         # - 8: Autoencoder - Used in conjunction with arch 4, 5
     # - model_id: model identifier / name
 
-    arch: 2
-    model_id: 'norm-per-slice'
+    arch: 0
+    model_id: 'BASELINE-last-slice'
 
     # General Model Parameters
 
@@ -177,7 +177,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 50 # maximum
+    num_epochs: 100 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
@@ -257,7 +257,7 @@ data:
     wv_preprocess: '3'
     wv_train: '3'
     wv_eval: '3'
-    normalize: True
+    normalize: False
 
 #--------------------------------
 #       Kube Params
