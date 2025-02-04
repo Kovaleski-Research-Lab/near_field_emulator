@@ -70,17 +70,33 @@ def plotting(conf, test_results, results_dir, fold_num=None):
                             seq_len=conf.model.seq_len, save_dir=results_dir)
     
     print(f"\nEvaluation complete. All results saved to: {results_dir}")
+    
+def process_svd_results(results_arr, P, mean_vec):
+    """denormalizes, decodes, and returns in numpy"""
+    result = results_arr * 180 / np.pi
+    result_tensor = torch.from_numpy(result)
+    result_tensor = modes.decode_dataset(result_tensor.squeeze(3), P, mean_vec)
+    return result_tensor.detach().cpu().numpy()
 
-def run(conf):
+def run(conf, data_module=None):
     # use current config to get results directory
     results_dir = conf.paths.results
     
-    # setup new parameter manager based on saved parameters
-    saved_conf = load_config(os.path.join(results_dir, 'config.yaml'))
+    # init datamodule
+    if data_module is None:
+        # setup new parameter manager based on saved parameters
+        saved_conf = load_config(os.path.join(results_dir, 'config.yaml'))
+        # update select parameters to match current run
+        saved_conf.data.wv_eval = conf.data.wv_eval
+        
+        # init datamodule
+        data_module = datamodule.select_data(saved_conf)
+        data_module.prepare_data()
+        data_module.setup(stage='test')
+    else:
+        saved_conf = conf
     
-    # update select parameters to match current run
-    saved_conf.data.wv_eval = conf.data.wv_eval
-    saved_conf.directive = conf.directive # just to be safe
+
         
     # Load model checkpoint
     model_path = os.path.join(results_dir, 'model.ckpt')
@@ -119,11 +135,6 @@ def run(conf):
     # setup the trainer
     trainer = train.configure_trainer(saved_conf, logger, checkpoint_callback, early_stopping, progress_bar)
     
-    # init datamodule
-    data_module = datamodule.select_data(saved_conf)
-    data_module.prepare_data()
-    data_module.setup(stage='test')
-    
     if (saved_conf.trainer.cross_validation):
         with open(os.path.join(results_dir, "split_info.yaml"), 'r') as f:
             split_info = yaml.safe_load(f)
@@ -138,53 +149,16 @@ def run(conf):
     
     # evaluate
     if saved_conf.model.arch == 'modelstm':
-        
-        # print a bunch of stuff
-        print(f"model_instance.test_results['valid']['nf_pred']: {model_instance.test_results['valid']['nf_pred']}")
-        print(f"model_instance.test_results['valid']['nf_truth'].shape: {model_instance.test_results['valid']['nf_truth'].shape}")
-        print(f"model_instance.test_results['train']['nf_pred'].shape: {model_instance.test_results['train']['nf_pred'].shape}")
-        print(f"model_instance.test_results['train']['nf_truth'].shape: {model_instance.test_results['train']['nf_truth'].shape}")
-        print(f"data_module.P.shape: {data_module.P.shape}")
-        print(f"data_module.mean_vec.shape: {data_module.mean_vec.shape}")
-        
-        nf_pred_valid = model_instance.test_results['valid']['nf_pred'] * 180 / np.pi
-        nf_truth_valid = model_instance.test_results['valid']['nf_truth'] * 180 / np.pi
-        nf_pred_train = model_instance.test_results['train']['nf_pred'] * 180 / np.pi
-        nf_truth_train = model_instance.test_results['train']['nf_truth'] * 180 / np.pi    
-        
-        print(f"nf_pred_valid.shape before decode_dataset called: {nf_pred_valid.shape}")
-        print(f"nf_pred_valid.dtype: {nf_pred_valid.dtype}")
-        
-        # decode the data
+        # fetch decoding params
         P = data_module.P
         mean_vec = data_module.mean_vec
         
-        nf_pred_valid = torch.from_numpy(nf_pred_valid)
-        nf_truth_valid = torch.from_numpy(nf_truth_valid)
-        nf_pred_train = torch.from_numpy(nf_pred_train)
-        nf_truth_train = torch.from_numpy(nf_truth_train)
-        
-        nf_pred_valid = modes.decode_dataset(nf_pred_valid.squeeze(3), P, mean_vec)
-        nf_truth_valid = modes.decode_dataset(nf_truth_valid.squeeze(3), P, mean_vec)
-        nf_pred_train = modes.decode_dataset(nf_pred_train.squeeze(3), P, mean_vec)
-        nf_truth_train = modes.decode_dataset(nf_truth_train.squeeze(3), P, mean_vec)
-
-        print(f"nf_pred_valid.shape after decode_dataset called: {nf_pred_valid.shape}")
-        
-        # update the test results
-        model_instance.test_results['valid']['nf_pred'] = nf_pred_valid.detach().cpu().numpy()
-        model_instance.test_results['valid']['nf_truth'] = nf_truth_valid.detach().cpu().numpy()
-        model_instance.test_results['train']['nf_pred'] = nf_pred_train.detach().cpu().numpy()
-        model_instance.test_results['train']['nf_truth'] = nf_truth_train.detach().cpu().numpy()
-        
-        
-        '''svd_params_valid = model_instance.test_results['valid']
-        svd_params_train = model_instance.test_results['train']
-        model_instance.test_results['valid']['nf_pred'] = modes.reconstruct_full_dataset(svd_params_valid['nf_pred'], saved_conf)
-        model_instance.test_results['valid']['nf_truth'] = modes.reconstruct_full_dataset(svd_params_valid['nf_truth'], saved_conf)
-        model_instance.test_results['train']['nf_pred'] = modes.reconstruct_full_dataset(svd_params_train['nf_pred'], saved_conf)
-        model_instance.test_results['train']['nf_truth'] = modes.reconstruct_full_dataset(svd_params_train['nf_truth'], saved_conf)
-        print(model_instance.test_results['valid']['nf_pred'].shape)'''
+        # Process both 'train' and 'valid' splits for both prediction and truth.
+        for split in ['train', 'valid']:
+            for key in ['nf_pred', 'nf_truth']:
+                model_instance.test_results[split][key] = process_svd_results(
+                    model_instance.test_results[split][key], P, mean_vec
+                )
         
     if conf.model.full_pipeline:
         if conf.model.arch == 'mlp':

@@ -84,6 +84,7 @@ class TrainerConfig(BaseModel):
     accelerator: Literal['cpu', 'gpu'] = 'gpu'
     valid_rate: int = 1
     gpu_config: List[Any] = [True, [0]]
+    matmul_precision: Literal['high', 'medium', 'low'] = 'medium'
     include_testing: bool = False
     cross_validation: bool = True
     patience: int = 15

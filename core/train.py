@@ -13,9 +13,10 @@ import sys
 from sklearn.model_selection import KFold
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning import Trainer, seed_everything
-from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, EarlyStopping, Callback
 from pytorch_lightning.callbacks.progress.tqdm_progress import Tqdm
 from pytorch_lightning.plugins.environments import SLURMEnvironment
+from tqdm.auto import tqdm
 
 #--------------------------------
 # Import: Custom Python Libraries
@@ -49,61 +50,72 @@ class CustomProgressBar(TQDMProgressBar):
             base_metrics["fold"] = f"{self.fold_idx + 1}/{self.total_folds}"
         return base_metrics
     
-class CustomEarlyStopping(EarlyStopping):
-    """Custom Early Stopping class for controlling the training loop;  
-    ensuring that we terminate the model after it stops improving.
+class CustomEarlyStopping(Callback):
     """
-    def __init__(self, monitor='val_loss', patience=5, min_delta=0.01, mode='min', verbose=True):
-        super().__init__(monitor=monitor, patience=patience, min_delta=min_delta, mode=mode, verbose=verbose)
+    Custom Early Stopping callback that prints a single clean summary per epoch.
+    Terminates training if the monitored metric does not improve sufficiently.
+    
+    Note: This callback inherits from Callback (not EarlyStopping) so that
+    Lightning’s built‐in early stopping logic does not interfere.
+    """
+    def __init__(self, monitor='val_loss', patience=5, min_delta=0.001, mode='min', verbose=True):
+        self.monitor = monitor
+        self.patience = patience
+        self.min_delta = min_delta
+        self.mode = mode
+        self.verbose = verbose
         self.wait_count = 0
         self.initial_score = None
-        self.last_epoch_processed = -1
+        self._already_called = False  # flag to ensure one update per epoch
         
+    def on_validation_epoch_start(self, trainer, pl_module):
+        self._already_called = False
+
     def on_validation_epoch_end(self, trainer, pl_module):
-        if trainer.current_epoch == self.last_epoch_processed:
+        # Only execute this logic once per epoch.   
+        if self._already_called:
             return
-        self.last_epoch_processed = trainer.current_epoch
+        self._already_called = True
         
-        current_score = trainer.callback_metrics[self.monitor]
+        # Get the current value of the monitored metric.
+        current_score = trainer.callback_metrics.get(self.monitor)
         if current_score is None:
             return
-        
         if isinstance(current_score, torch.Tensor):
             current_score = current_score.item()
-        
+
+        # On first call, set the initial score.
         if self.initial_score is None:
             self.initial_score = current_score
             self.wait_count = 0
-            
-        # Calculate total improvement over the patience period
+            if self.verbose:
+                print(f"Epoch {trainer.current_epoch}: {self.monitor} = {current_score:.5f} (initial score set)")
+            return
+
+        # Compute improvement.
         if self.mode == 'min':
-            total_improvement = self.initial_score - current_score
-            # total_improvement should be negative to match min_delta    
-            total_improvement = -total_improvement
-        else:  # mode == 'max'
-            total_improvement = current_score - self.initial_score
-            
-        if isinstance(total_improvement, torch.Tensor):
-            total_improvement = total_improvement.item()
-            
-        #if self.verbose:
-        #    print(f"\nEpoch {trainer.current_epoch}: total_improvement = {total_improvement:.5f}, min_delta = {self.min_delta}\n")
-            
-        # check if total_improvement exceeds min_delta
-        if total_improvement <= self.min_delta:
-            # reset counters
+            improvement = self.initial_score - current_score  # positive means improvement
+            #improvement = -improvement
+        else:
+            improvement = current_score - self.initial_score
+
+        # Check if the improvement is large enough.
+        if improvement >= self.min_delta:
             self.initial_score = current_score
             self.wait_count = 0
-            if self.verbose:
-                print(f"\nEpoch {trainer.current_epoch}: Improvement of {total_improvement:.5f} observed; continuing training.\n")
-        else: # didn't improve enough
+            msg = (f"Epoch {trainer.current_epoch}: {self.monitor} improved by {improvement:.5f} "
+                   f"to {current_score:.5f}; wait_count reset to 0.")
+        else:
             self.wait_count += 1
-            if self.verbose:
-                print(f"\nEpoch {trainer.current_epoch}: No sufficient improvement; wait_count = {self.wait_count}/{self.patience}\n")
+            msg = (f"Epoch {trainer.current_epoch}: {self.monitor} did not improve sufficiently "
+                   f"(improvement = {improvement:.5f}); wait_count = {self.wait_count}/{self.patience}.")
             if self.wait_count >= self.patience:
-                if self.verbose:
-                    print(f"\nEarlyStopping at epoch {trainer.current_epoch}: {self.monitor} did not improve by at least {self.min_delta} over the last {self.patience} epochs.\n")
+                msg += " Early stopping triggered."
                 trainer.should_stop = True
+
+        if self.verbose:
+            tqdm.write(msg)
+
            
 def configure_trainer(conf, logger, checkpoint_callback, early_stopping, progress_bar):
     """Create and return a configured Trainer instance."""
@@ -194,7 +206,7 @@ def train_once(conf, data_module):
         save_top_k=1,
         monitor='val_loss',
         mode='min' if conf.model.objective_function == 'mse' else 'max',
-        verbose=True
+        verbose=False
     )
 
     early_stopping = CustomEarlyStopping(
@@ -309,13 +321,14 @@ def train_with_cross_validation(conf, data_module):
 # Main Training Entry Point
 #--------------------------------
 
-def run(conf):
+def run(conf, data_module=None):
     logging.debug("train.py() | running training")
 
     # Initialize: The datamodule
-    data_module = datamodule.select_data(conf)
-    data_module.prepare_data()
-    data_module.setup(stage='fit')
+    if data_module is None:
+        data_module = datamodule.select_data(conf)
+        data_module.prepare_data()
+        data_module.setup(stage='fit')
     
     # Dump config for future reference
     #os.makedirs(conf.paths.results, exist_ok=True)
@@ -327,3 +340,8 @@ def run(conf):
         train_with_cross_validation(conf, data_module)
     else: # run once
         train_once(conf, data_module)
+        
+    return data_module
+
+    # TODO: rectify full_pipeline in eval_model and datamodule
+    # idealy elminate it, add support for --> train mlp, train lstm, evaluate all in one run

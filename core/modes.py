@@ -520,7 +520,7 @@ def encode_modes(data, config):
 
 def run(config):
     datasets_path = os.path.join(config.paths.data, 'preprocessed_data')
-    if config.directive == 5: # encoding
+    if config.directive == 6: # encoding
         # grab the original preprocessed data
         full_data = torch.load(os.path.join(datasets_path, f'dataset_155.pt'), weights_only=True)
 
@@ -541,7 +541,7 @@ def run(config):
         
         # save the new data to disk
         torch.save(encoded_data, save_path)
-    else: # directive == 6 and we're decoding #TODO right now this only works for SVD
+    else: # directive == 7 and we're decoding #TODO right now this only works for SVD
         encoded_data = torch.load(os.path.join(datasets_path, f'dataset_{config.model.modelstm.method}.pt'))
         svd_params = torch.load(os.path.join(datasets_path, f'svd_params.pt'))
         
