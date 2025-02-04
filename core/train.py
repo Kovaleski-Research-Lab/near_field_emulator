@@ -329,6 +329,8 @@ def run(conf, data_module=None):
         data_module = datamodule.select_data(conf)
         data_module.prepare_data()
         data_module.setup(stage='fit')
+    #else: # 2nd training pass
+    #TODO: determine what/if things need to be recalled
     
     # Dump config for future reference
     #os.makedirs(conf.paths.results, exist_ok=True)

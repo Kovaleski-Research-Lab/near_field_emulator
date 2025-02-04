@@ -25,6 +25,31 @@ from utils import mapping
 # debugging
 #logging.basicConfig(level=logging.DEBUG)
 
+class DataProcessor:
+    def process(self, data, conf):
+        raise NotImplementedError
+    
+class AutoencoderProcessor(DataProcessor):
+    def process(self, data, conf):
+        return format_ae_data(data, conf)
+
+class MLPProcessor(DataProcessor):
+    def process(self, data, conf):
+        if conf.model.interpolate_fields:
+            data = interpolate_fields(data)
+        return WaveMLP_Dataset(
+            data, 
+            conf.transform, 
+            conf.model.mlp_strategy, 
+            conf.model.patch_size, 
+            buffer=conf.data.buffer
+        )
+        
+class TemporalProcessor(DataProcessor):
+    def process(self, data, conf, stage):
+        return format_temporal_data(data, conf, stage)
+
+
 class NF_Datamodule(LightningDataModule):
     def __init__(self, conf, transform = None):
         super().__init__() 
@@ -51,7 +76,8 @@ class NF_Datamodule(LightningDataModule):
         self.train = None
         self.valid = None
         self.test = None
-
+        
+        self._setup_processors()
         self.initialize_cpus(self.n_cpus)
 
     def initialize_cpus(self, n_cpus):
@@ -60,12 +86,56 @@ class NF_Datamodule(LightningDataModule):
             n_cpus = 1
         self.n_cpus = n_cpus 
         logging.debug("NF_DataModule | Setting CPUS to {}".format(self.n_cpus))
+
+    def _setup_processors(self):
+        self.processors = {
+            'autoencoder': AutoencoderProcessor(),
+            'mlp': MLPProcessor(),
+            'cvnn': MLPProcessor(),
+            # All other architectures default to TimeSeriesProcessor
+        }
+        
+    def _load_stage_data(self, stage):
+        if stage in ["fit", None]:
+            data = self.load_data_tensor(self.wv_train)
+            if self.normalize:
+                data['near_fields'] = mapping.l2_norm(data['near_fields'])
+        elif stage == "test":
+            data = self.load_data_tensor(self.wv_eval)
+            if self.conf.model.full_pipeline and self.conf.model.arch == 'lstm':
+                mlp_preds = torch.load(os.path.join(self.conf.paths.mlp_results, 'preds.pt'))
+                data['near_fields'][..., 0] = mlp_preds
+        return data
+
+    def _create_index_map(self, data):
+        index_map = {'train': [], 'valid': []}
+        for i in range(len(data['tag'])):
+            key = 'valid' if data['tag'][i] == 0 else 'train'
+            index_map[key].append(i)
+        return index_map
         
     def prepare_data(self):
         pass
-
-    # TODO: Getting a bit messy, consider abstraction/subclassing
+    
     def setup(self, stage):
+            data = self._load_stage_data(stage)
+            
+            # Get appropriate processor based on model type
+            processor = self.processors.get(
+                self.model_type, 
+                TemporalProcessor()
+            )
+            
+            # Process data based on model type
+            self.dataset = processor.process(data, self.conf) if self.model_type != 'lstm' else \
+                        processor.process(data, self.conf, stage)
+            
+            # Create index map for train/valid split
+            self.index_map = self._create_index_map(data)
+
+    # TODO: confirm its okay to remove
+    '''def setup(self, stage):
+        #if self.dataset == None: # first pass, good to load
         # load the correct data in
         if stage == "fit" or stage == None:
             data = self.load_data_tensor(self.wv_train)
@@ -75,8 +145,7 @@ class NF_Datamodule(LightningDataModule):
             data = self.load_data_tensor(self.wv_eval)
             if self.conf.model.full_pipeline and self.conf.model.arch == 'lstm':
                 mlp_preds = torch.load(os.path.join(self.conf.paths.mlp_results, 'preds.pt'))
-                data['near_fields'][..., 0] = mlp_preds # replace first slices with the MLP outputs
-            
+                data['near_fields'][..., 0] = mlp_preds # replace first slices with the MLP outputs   
         # format data based on model type
         if self.model_type == 'autoencoder': # pretraining
             self.dataset = format_ae_data(data, self.conf)
@@ -93,7 +162,7 @@ class NF_Datamodule(LightningDataModule):
             if data['tag'][i] == 0:
                 self.index_map['valid'].append(i)
             else:
-                self.index_map['train'].append(i)
+                self.index_map['train'].append(i)'''
                 
     def get_datapath(self, wv_idx=None):
         """Based on params, return the correct dataset we'll be using"""
