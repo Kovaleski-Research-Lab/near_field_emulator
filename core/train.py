@@ -438,7 +438,7 @@ def run(conf, data_module=None, pipeline=None):
     # save exact config file for later use
     os.makedirs(conf.paths.results, exist_ok=True)
     # copy args.config to results folder
-    shutil.copy('conf/config.yaml', os.path.join(conf.paths.results, 'config.yaml'))
+    shutil.copy('/develop/code/near_field_emulator/conf/config.yaml', os.path.join(conf.paths.results, 'config.yaml'))
 
     if conf.model.arch == 'mlp-lstm':
         trained_models, data_module = pipeline_train(conf)
