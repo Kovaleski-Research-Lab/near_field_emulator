@@ -15,6 +15,7 @@
 directive: 3
 deployment: 1
 
+
 #--------------------------------
 #       General Params
 #--------------------------------
@@ -50,7 +51,7 @@ model:
     # - full_pipeline: True/False - whether to perform the full pipeline (MLP -> LSTM)
 
     arch: 9
-    model_id: 'sanity-test'
+    model_id: 'BASELINE-full-sequence'
     full_pipeline: False
 
     # General Model Parameters
@@ -173,7 +174,7 @@ model:
     # - spacing_mode: 'sequential' or 'distributed'
     # - autoreg: autoregressive mode or teacher forcing - M2M only
 
-    seq_len: 15
+    seq_len: 62
     io_mode: 'one_to_many'
     spacing_mode: 'sequential'
     autoreg: True
@@ -183,7 +184,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 50 # maximum
+    num_epochs: 100 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
