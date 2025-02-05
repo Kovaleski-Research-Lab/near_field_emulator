@@ -167,9 +167,8 @@ def clean_loss_df(df):
     df = df.sort_index()
     return df
 
-def plot_loss(conf, min_list=[None, None], max_list=[None, None], save_fig=False):
+def plot_loss(conf, save_dir, min_list=[None, None], max_list=[None, None], save_fig=False):
     model_identifier = get_model_identifier(conf)
-    save_dir = conf.paths.results
     
     if conf.trainer.cross_validation:
         losses_path = os.path.join(save_dir, "losses")
@@ -531,6 +530,7 @@ def plot_dft_fields(test_results, resub=False,
             truth_imag = torch.from_numpy(results['nf_truth'][sample_idx, :, 1, :, :])
             pred_real = torch.from_numpy(results['nf_pred'][sample_idx, :, 0, :, :])
             pred_imag = torch.from_numpy(results['nf_pred'][sample_idx, :, 1, :, :])
+            
             
             # determine which coordinate format to plot
             if format == 'polar':

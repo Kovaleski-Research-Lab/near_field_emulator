@@ -13,6 +13,7 @@ from torch.utils.data import Dataset, DataLoader, Subset
 import pickle
 import torch
 from tqdm import tqdm
+from typing import Dict
 
 #--------------------------------
 # Import: Custom Python Libraries
@@ -25,59 +26,161 @@ from utils import mapping
 # debugging
 #logging.basicConfig(level=logging.DEBUG)
 
+# --------------------------------
+# Raw Data Loading
+# --------------------------------
+
+class RawDataLoader:
+    """
+    Loads and caches the raw data from disk. This class is responsible for reading
+    the data file (which contains ALL data) only once.
+    """
+    def __init__(self, conf):
+        self.conf = conf
+        self.data_cache: Dict[str, dict] = {} # Cache keyed by stage ("fit, "test")
+        
+    def load(self, stage: str) -> dict:
+        if stage in self.data_cache:
+            return self.data_cache[stage]
+        
+        if stage in ["fit", None]:
+            data = self._load_data(self.conf.data.wv_train)
+            if self.conf.data.normalize:
+                data['near_fields'] = mapping.l2_norm(data['near_fields'])
+        elif stage == "test":
+            data = self._load_data(self.conf.data.wv_eval)
+            '''if self.conf.model.full_pipeline and self.conf.model.arch == 'lstm':
+                # Replace first channel with MLP predictions (if applicable)
+                mlp_preds = torch.load(os.path.join(self.conf.paths.mlp_results, 'preds.pt'))
+                data['near_fields'][..., 0] = mlp_preds'''
+        else:
+            raise ValueError(f"Unsupported stage: {stage}")
+
+        self.data_cache[stage] = data
+        return data
+    
+    def _load_data(self, wv_idx):
+        if self.conf.model.arch == 'modelstm':
+            datapath = self._get_datapath()
+            print(f"Loading data from datapath: {datapath}")
+            data = torch.load(datapath, weights_only=True)
+            data, P, mean_vec = preprocess_svd_data(data, self.conf)
+            self.P = P
+            self.mean_vec = mean_vec
+            return data
+        else:
+            # If multiple wavelengths are specified, combine them.
+            if isinstance(wv_idx, (list, tuple)) and len(wv_idx) > 1:
+                data_combined = {'near_fields': [], 'phases': [], 
+                                 'derivatives': [], 'radii': [], 
+                                 'tag': [], 'wavelength': []}
+                for wv in tqdm(wv_idx, desc="Loading data...", ncols=80, file=sys.stderr, mininterval=1.0, dynamic_ncols=True):
+                    datapath = self._get_datapath(wv)
+                    print(f"Loading data from datapath: {datapath}")
+                    wv_data = torch.load(datapath, weights_only=True)
+                    num_samples = wv_data['near_fields'].shape[0]
+                    for key in wv_data.keys():
+                        data_combined[key].append(wv_data[key])
+                    # Record the wavelength for each sample.
+                    data_combined['wavelength'].append(torch.full((num_samples,), self.conf.data.wv_dict[wv], dtype=torch.float))
+                # Concatenate lists into tensors.
+                for key in data_combined:
+                    data_combined[key] = torch.cat(data_combined[key], dim=0)
+                return data_combined
+            else:
+                datapath = self._get_datapath(wv_idx)
+                wv_data = torch.load(datapath, weights_only=True)
+                wv_data['wavelength'] = torch.full((wv_data['near_fields'].shape[0],), self.conf.data.wv_dict[wv_idx], dtype=torch.float)
+                return wv_data
+            
+    def _get_datapath(self, wv_idx=None):
+        """Based on params, return the correct dataset we'll be using"""
+        if not self.conf.data.buffer:
+            return os.path.join(self.conf.paths.data, 'preprocessed_data', 'dataset_nobuffer.pt')
+        elif self.conf.model.arch == 'modelstm':
+            return os.path.join(self.conf.paths.data, 'preprocessed_data', f"dataset_{self.conf.model.modelstm.method}.pt")
+        else:
+            if wv_idx is None:
+                raise ValueError("Wavelength index is required for dataset retrieval")
+            wv = str(self.conf.data.wv_dict[wv_idx]).replace('.', '')
+            return os.path.join(self.conf.paths.data, 'preprocessed_data', f'dataset_{wv}.pt')
+ 
+# --------------------------------
+# Data Processing
+# --------------------------------       
+
 class DataProcessor:
-    def process(self, data, conf):
-        raise NotImplementedError
+    def process(self, raw_data: dict, conf) -> Dataset:
+        raise NotImplementedError("process() must be implemented in subclasses")
     
 class AutoencoderProcessor(DataProcessor):
-    def process(self, data, conf):
-        return format_ae_data(data, conf)
+    def process(self, raw_data, conf):
+        return format_ae_data(raw_data, conf)
 
 class MLPProcessor(DataProcessor):
-    def process(self, data, conf):
+    def process(self, raw_data, conf):
         if conf.model.interpolate_fields:
-            data = interpolate_fields(data)
+            raw_data = interpolate_fields(raw_data)
+        # Get transform from model config if it exists, otherwise None
+        transform = getattr(conf.model, 'transform', None)
         return WaveMLP_Dataset(
-            data, 
-            conf.transform, 
+            raw_data, 
+            transform, 
             conf.model.mlp_strategy, 
             conf.model.patch_size, 
             buffer=conf.data.buffer
         )
         
 class TemporalProcessor(DataProcessor):
-    def process(self, data, conf, stage):
-        return format_temporal_data(data, conf, stage)
+    def process(self, data, conf):
+        #print(f"\nINITIATING CALL OF format_temporal_data")
+        return format_temporal_data(data, conf)
+    
+def get_processor(conf) -> DataProcessor:
+    mapping_processors = {
+        'autoencoder': AutoencoderProcessor(),
+        'mlp': MLPProcessor(),
+        'cvnn': MLPProcessor()
+    }
+    # Default to temporal processing if the architecture key is not found.
+    return mapping_processors.get(conf.model.arch, TemporalProcessor())
 
+# --------------------------------
+# Lightning DataModule
+# --------------------------------
 
-class NF_Datamodule(LightningDataModule):
+class NFDataModule(LightningDataModule):
+    """
+    Generic DataModule that loads the raw data only once and processes it
+    according to the model type. The raw data is shared and then formatted via
+    a chosen DataProcessor.
+    """
     def __init__(self, conf, transform = None):
         super().__init__() 
         logging.debug("datamodule.py - Initializing NF_DataModule")
 
         self.conf = conf.copy()
-        logging.debug("datamodule.py - Setting conf to {}".format(self.conf))
         self.directive = conf.directive
         self.model_type = conf.model.arch
         self.n_cpus = conf.data.n_cpus
         self.seed = conf.seed
         self.n_folds = conf.data.n_folds
-        self.mlp_strategy = conf.model.mlp_strategy
-        self.patch_size = conf.model.patch_size
         self.path_data = conf.paths.data
-        self.wv_dict = conf.data.wv_dict
-        self.wv_train = conf.data.wv_train
-        self.wv_eval = conf.data.wv_eval
         self.normalize = conf.data.normalize
         self.batch_size = conf.trainer.batch_size
         self.transform = transform #TODO
+        self.wv_dict = conf.data.wv_dict
+        self.wv_train = conf.data.wv_train
+        self.wv_eval = conf.data.wv_eval
+        
+        self.raw_loader = RawDataLoader(self.conf)
+        self.processor = get_processor(self.conf)
         self.index_map = None
         self.dataset = None
         self.train = None
         self.valid = None
         self.test = None
         
-        self._setup_processors()
         self.initialize_cpus(self.n_cpus)
 
     def initialize_cpus(self, n_cpus):
@@ -86,26 +189,21 @@ class NF_Datamodule(LightningDataModule):
             n_cpus = 1
         self.n_cpus = n_cpus 
         logging.debug("NF_DataModule | Setting CPUS to {}".format(self.n_cpus))
-
-    def _setup_processors(self):
-        self.processors = {
-            'autoencoder': AutoencoderProcessor(),
-            'mlp': MLPProcessor(),
-            'cvnn': MLPProcessor(),
-            # All other architectures default to TimeSeriesProcessor
-        }
         
-    def _load_stage_data(self, stage):
+    def prepare_data(self):
+        # nothing to do here because raw data is loaded on demand
+        pass
+
+    def setup(self, stage):
+        raw_data = self.raw_loader.load(stage if stage is not None else "fit")
+        # Process the raw data with the selected processor.
+        self.dataset = self.processor.process(raw_data, self.conf)
+        # Create an index map for train/validation split.
+        self.index_map = self._create_index_map(raw_data)
         if stage in ["fit", None]:
-            data = self.load_data_tensor(self.wv_train)
-            if self.normalize:
-                data['near_fields'] = mapping.l2_norm(data['near_fields'])
+            self.setup_train_val()
         elif stage == "test":
-            data = self.load_data_tensor(self.wv_eval)
-            if self.conf.model.full_pipeline and self.conf.model.arch == 'lstm':
-                mlp_preds = torch.load(os.path.join(self.conf.paths.mlp_results, 'preds.pt'))
-                data['near_fields'][..., 0] = mlp_preds
-        return data
+            self.setup_train_val()
 
     def _create_index_map(self, data):
         index_map = {'train': [], 'valid': []}
@@ -113,56 +211,6 @@ class NF_Datamodule(LightningDataModule):
             key = 'valid' if data['tag'][i] == 0 else 'train'
             index_map[key].append(i)
         return index_map
-        
-    def prepare_data(self):
-        pass
-    
-    def setup(self, stage):
-            data = self._load_stage_data(stage)
-            
-            # Get appropriate processor based on model type
-            processor = self.processors.get(
-                self.model_type, 
-                TemporalProcessor()
-            )
-            
-            # Process data based on model type
-            self.dataset = processor.process(data, self.conf) if self.model_type != 'lstm' else \
-                        processor.process(data, self.conf, stage)
-            
-            # Create index map for train/valid split
-            self.index_map = self._create_index_map(data)
-
-    # TODO: confirm its okay to remove
-    '''def setup(self, stage):
-        #if self.dataset == None: # first pass, good to load
-        # load the correct data in
-        if stage == "fit" or stage == None:
-            data = self.load_data_tensor(self.wv_train)
-            if self.normalize:
-                data['near_fields'] = mapping.l2_norm(data['near_fields'])
-        elif stage == "test":
-            data = self.load_data_tensor(self.wv_eval)
-            if self.conf.model.full_pipeline and self.conf.model.arch == 'lstm':
-                mlp_preds = torch.load(os.path.join(self.conf.paths.mlp_results, 'preds.pt'))
-                data['near_fields'][..., 0] = mlp_preds # replace first slices with the MLP outputs   
-        # format data based on model type
-        if self.model_type == 'autoencoder': # pretraining
-            self.dataset = format_ae_data(data, self.conf)
-        elif self.model_type == 'mlp' or self.model_type == 'cvnn':
-            if self.conf.model.interpolate_fields: # interpolate fields to lower resolution
-                data = interpolate_fields(data)
-            self.dataset = WaveMLP_Dataset(data, self.transform, self.mlp_strategy, self.patch_size, buffer=self.conf.data.buffer)
-        else: # time series models
-            self.dataset = format_temporal_data(data, self.conf, stage)
-            
-        # create a map of indices for OG train/valid split - default for when we don't use crossval
-        self.index_map = {'train': [], 'valid': []}
-        for i in range(len(data['tag'])):
-            if data['tag'][i] == 0:
-                self.index_map['valid'].append(i)
-            else:
-                self.index_map['train'].append(i)'''
                 
     def get_datapath(self, wv_idx=None):
         """Based on params, return the correct dataset we'll be using"""
@@ -171,88 +219,69 @@ class NF_Datamodule(LightningDataModule):
         elif self.conf.model.arch == 'modelstm':
             return os.path.join(self.path_data, 'preprocessed_data', f"dataset_{self.conf.model.modelstm.method}.pt")
         else:
-            if not wv_idx:
+            if wv_idx is None:
                 raise ValueError("Wavelength index is required for dataset retrieval")
             wv = str(self.wv_dict[wv_idx]).replace('.', '')
             return os.path.join(self.path_data, 'preprocessed_data', f'dataset_{wv}.pt')
         
-    def load_data_tensor(self, wv_idx):
-        """Looks at params and loads the relevant dataset(s)"""
+    def update_near_fields(self, mlp_predictions):
+        """Update the near fields with MLP predictions for pipeline evaluation"""
+        # Get raw data from the loader
+        raw_data = self.raw_loader.load('test')
         
-        if self.conf.model.arch == 'modelstm':
-            datapath = self.get_datapath()
-            data = torch.load(datapath, weights_only=True)
-            data, P, mean_vec = preprocess_svd_data(data, self.conf)
-            self.P = P
-            self.mean_vec = mean_vec
-            return data
-        else:
-            if len(wv_idx) > 1:  # multiple wavelengths
-                data_combined = {'near_fields': [], 'phases': [], 
-                                'derivatives': [], 'radii': [], 
-                                'tag': [], 'wavelength': []}  # Dictionary to store concatenated data
-                for wv in tqdm(wv_idx, desc="Loading data...", ncols=80, file=sys.stderr, mininterval=1.0, dynamic_ncols=True):
-                    datapath = self.get_datapath(wv)
-                    wv_data = torch.load(datapath, weights_only=True)
-
-                    # fetch the number of samples
-                    num_samples = wv_data['near_fields'].shape[0]
-                    
-                    # Add everything to the combined dictionary
-                    for key in wv_data.keys():
-                        data_combined[key].append(wv_data[key])
-                    # add a new key to keep track of samples' wavelengths
-                    data_combined['wavelength'].append(torch.full((num_samples,), self.wv_dict[wv], dtype=torch.float))  # Add wavelength identifier
-
-                # Concatenate all wavelengths' data along the sample dimension (dim=0)
-                for key in data_combined.keys():
-                    data_combined[key] = torch.cat(data_combined[key], dim=0)
-
-                return data_combined
+        # Update the near fields with MLP predictions
+        # Note: We're updating channel 0 of the time dimension (initial condition)
+        for mode, indices in self.index_map.items():
+            raw_data['near_fields'][indices, :, :, :, 0] = mlp_predictions[mode]
             
-            else: # easy, just a single wavelength
-                datapath = self.get_datapath(wv_idx)
-                wv_data = torch.load(datapath, weights_only=True)
-                
-                wv_data['wavelength'] = torch.full((wv_data['near_fields'].shape[0],), self.wv_dict[wv_idx], dtype=torch.float)
-                return wv_data
+        # Reprocess the data with updated near fields
+        self.dataset = self.processor.process(raw_data, self.conf)
         
-    def setup_fold(self, train_idx, val_idx):
-        # create subsets for the current fold
-        self.train = Subset(self.dataset, train_idx)
-        self.valid = Subset(self.dataset, val_idx)
+        # Reset the train/val splits
+        self.setup_train_val()
         
-    def setup_og(self):
-        # use index map to create subsets in line with the original fixed random split
+    def setup_train_val(self):
         self.train = Subset(self.dataset, self.index_map['train'])
         self.valid = Subset(self.dataset, self.index_map['valid'])
+
+    #def setup_test(self): #TODO: redundant?
+    #    self.test_subset = self.valid_subset
+
+    def setup_fold(self, train_idx, val_idx):
+        self.train = Subset(self.dataset, train_idx)
+        self.valid = Subset(self.dataset, val_idx)
 
     def train_dataloader(self):
         return DataLoader(self.train,
                           batch_size=self.batch_size,
                           num_workers=self.n_cpus,
-                          persistent_workers=True,
-                          shuffle=True
-                        )
+                          shuffle=True,
+                          persistent_workers=True)
 
     def val_dataloader(self):
         return DataLoader(self.valid,
                           batch_size=self.batch_size,
-                          num_workers=self.n_cpus, 
+                          num_workers=self.n_cpus,
                           shuffle=False,
-                          persistent_workers=True
-                        )
+                          persistent_workers=True)
 
     def test_dataloader(self):
         return DataLoader(self.test,
                           batch_size=self.batch_size,
                           num_workers=self.n_cpus,
-                          shuffle=False
-                        )
+                          shuffle=False,
+                          persistent_workers=True)
+        
+def select_data(conf):
+    return NFDataModule(conf)
+
+# --------------------------------
+# Dataset Classes
+# --------------------------------
 
 class WaveMLP_Dataset(Dataset):
     """
-    Dataset for the MLP models associated with mapping design conf to fields.
+    Dataset for the MLP models that map design parameters to fields.
     """
     def __init__(self, data, transform, approach=0, patch_size=1, buffer=True):
         logging.debug("datamodule.py - Initializing WaveMLP_Dataset")
@@ -262,11 +291,8 @@ class WaveMLP_Dataset(Dataset):
         self.patch_size = patch_size
         self.data = data
         self.is_buffer = buffer
-        # setup data accordingly
-        self.format_data()
-        
-        # distributed subset approach
-        if self.approach == 2:
+        self.format_data() # setup data accordingly
+        if self.approach == 2: # distributed subset approach
             self.distributed_indices = self.get_distributed_indices()
             
     def get_distributed_indices(self):
@@ -332,13 +358,10 @@ class WaveModel_Dataset(Dataset):
 
     def __len__(self):
         return len(self.samples)
-        
-def select_data(conf):
-    return NF_Datamodule(conf)
 
-#--------------------------------
-# Initialize: Format data
-#--------------------------------
+# --------------------------------
+# Formatting & Processing Functions
+# --------------------------------
 
 # for saving preprocessed data into a single pt. file (LSTM/RNN)
 def load_pickle_data(train_path, valid_path, save_path, arch='mlp'):
@@ -408,7 +431,7 @@ def load_pickle_data(train_path, valid_path, save_path, arch='mlp'):
                 'tag': tag_tensor}, save_path)
     print(f"Data saved to {save_path}")
     
-def format_temporal_data(data, conf, stage='train', order=(-1, 0, 1, 2)):
+def format_temporal_data(data, conf, order=(-1, 0, 1, 2)):
     """Formats the preprocessed data file into the correct setup  
     and order for the LSTM model.
 
@@ -420,12 +443,25 @@ def format_temporal_data(data, conf, stage='train', order=(-1, 0, 1, 2)):
     Returns:
         dataset (WaveModel_Dataset): formatted dataset
     """
+    
     all_samples, all_labels = [], []
     spacing_mode = conf.model.spacing_mode
     io_mode = conf.model.io_mode
     seq_len = conf.model.seq_len
     
     fields = data['near_fields']
+    
+    '''import matplotlib.pyplot as plt
+    import datetime
+    print(f"Specific raw_data sample from right before formatting:[0, 0, 0:2, 0:2]: {fields[0, 0, 0:2, 0:2, 0]}")
+    # create a plot sample in the real
+    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+    ax.imshow(fields[0, 0, :, :, 0], cmap='viridis')
+    ax.set_title('raw_data real before formatting')
+    ax.axis('off')
+    plt.show()
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    fig.savefig(f'raw_data_real_before_formatting_{timestamp}.pdf')'''
     
     #if stage == 'train': # normalize
     #fields = mapping.l2_norm(data['near_fields'])
@@ -477,7 +513,7 @@ def format_temporal_data(data, conf, stage='train', order=(-1, 0, 1, 2)):
                 if t + seq_len < total:
                     block = full_sequence[:, :, :, t:t+seq_len + 1]
                     # ex: sample -> t=0 , label -> t=1, t=2, t=3 (if seq_len were 3)
-                    sample = block[:, :, :, :1]
+                    sample = block[:, :, :, 0:1]
                     label = block[:, :, :, 1:]
                         
             elif io_mode == 'many_to_many':
@@ -511,6 +547,18 @@ def format_temporal_data(data, conf, stage='train', order=(-1, 0, 1, 2)):
         else:
             # no other spacing modes are implemented
             raise NotImplementedError(f'Specified recurrent dataloading confuration is not implemented.')
+  
+    '''# create a plot of the sample real
+    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+    ax.imshow(all_samples[0][0, 0, :, :], cmap='viridis')
+    ax.set_title('Sample 0, THE LSTM INPUT, first slice')
+    ax.axis('off')
+    plt.show()
+    
+    # save the plots
+    # get timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    fig.savefig(f'sample_0_input_{timestamp}.pdf')'''
         
     return WaveModel_Dataset(all_samples, all_labels)
 

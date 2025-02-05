@@ -85,7 +85,6 @@ class TrainerConfig(BaseModel):
     valid_rate: int = 1
     gpu_config: List[Any] = [True, [0]]
     matmul_precision: Literal['high', 'medium', 'low'] = 'medium'
-    include_testing: bool = False
     cross_validation: bool = True
     patience: int = 15
     min_delta: float = 0.0001
@@ -209,6 +208,28 @@ class KubeConfig(BaseModel):
         if not os.path.exists(model.job_files):
             raise ValueError(f"Job files directory {model.job_files} does not exist")
         return model
+    
+class PipelineConfig(BaseModel):
+    phase_name: str
+    model_arch: str
+    processor: Optional[str] = None
+    results_dir: Optional[str] = None  # Will be populated during validation
+    config: Optional[Dict[str, Any]] = None  # Will store phase-specific config
+
+    @field_validator('model_arch', mode='before')
+    def validate_model_arch(cls, value):
+        valid_archs = ['mlp', 'lstm', 'convlstm', 'modelstm', 'cvnn']
+        if value not in valid_archs:
+            raise ValueError(f"Model architecture must be one of {valid_archs}")
+        return value
+
+    @field_validator('processor', mode='before')
+    def validate_processor(cls, value):
+        if value:
+            valid_processors = ['MLPProcessor', 'TemporalProcessor']
+            if value not in valid_processors:
+                raise ValueError(f"Processor must be one of {valid_processors}")
+        return value
 
 class MainConfig(BaseModel):
     directive: int
@@ -219,6 +240,7 @@ class MainConfig(BaseModel):
     data: DataConfig
     physics: PhysicsConfig
     kube: KubeConfig
+    pipeline: Optional[List[PipelineConfig]] = None
     seed: List[Any] = field(default_factory=list)
     
     @model_validator(mode="after")
@@ -228,6 +250,8 @@ class MainConfig(BaseModel):
             main.paths.results = os.path.join(main.paths.results, main.model.arch, main.model.modelstm.method, main.model.io_mode, main.model.spacing_mode, f"model_{main.model.model_id}")
         elif main.model.arch == 'mlp' or main.model.arch == 'cvnn':
             main.paths.results = os.path.join(main.paths.results, main.model.arch, f"model_{main.model.model_id}")
+        elif main.model.arch == 'mlp-lstm':
+            main.paths.results = os.path.join(main.paths.results, 'surrogate', f"model_{main.model.model_id}")
         else:
             main.paths.results = os.path.join(main.paths.results, main.model.arch, main.model.io_mode, main.model.spacing_mode, f"model_{main.model.model_id}")
         
@@ -247,6 +271,21 @@ class MainConfig(BaseModel):
             main.kube.train_job['num_mem_req'] = '300Gi'
         return main
     
+    @model_validator(mode='after')
+    def setup_pipeline(cls, main):
+        if main.pipeline:
+            for phase in main.pipeline:
+                # Set up phase-specific results directory
+                phase.results_dir = os.path.join(main.paths.results, phase.phase_name)
+                
+                # Create phase-specific config
+                phase_config = main.model.dict()
+                phase_config['arch'] = phase.model_arch
+                phase_config['full_pipeline'] = True if phase.model_arch != 'mlp' else False
+                
+                # Store the phase-specific configuration
+                phase.config = phase_config
+    
 #--------------------------------
 #       Helper Functions
 #--------------------------------
@@ -261,7 +300,8 @@ def get_model_type(arch: int) -> str:
         5: "ae-convlstm",
         6: "modelstm",
         7: "diffusion",
-        8: "autoencoder"
+        8: "autoencoder",
+        9: "mlp-lstm"
     }
     return model_types.get(arch, ValueError("Model type not recognized"))
 

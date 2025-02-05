@@ -32,16 +32,16 @@ class Writer:
         if self.fold_idx is not None:
             os.makedirs(os.path.join(self.path, 'losses'), exist_ok=True)
             self.path_metrics = os.path.join(self.path, 'losses', f"fold{self.fold_idx+1}.csv")
-            self.path_train = os.path.join(self.path, "train_info", f"fold{self.fold_idx+1}")
-            self.path_valid = os.path.join(self.path, "valid_info", f"fold{self.fold_idx+1}")
+            #self.path_train = os.path.join(self.path, "train_info", f"fold{self.fold_idx+1}")
+            #self.path_valid = os.path.join(self.path, "valid_info", f"fold{self.fold_idx+1}")
         else:
             self.path_metrics = os.path.join(self.path, self.name)
-            self.path_train = os.path.join(self.path, "train_info")
-            self.path_valid = os.path.join(self.path, "valid_info")
+            #self.path_train = os.path.join(self.path, "train_info")
+            #self.path_valid = os.path.join(self.path, "valid_info")
 
         # Ensure specific directories exist
-        os.makedirs(self.path_valid, exist_ok=True)
-        os.makedirs(self.path_train, exist_ok=True)
+        #os.makedirs(self.path_valid, exist_ok=True)
+        #os.makedirs(self.path_train, exist_ok=True)
         
     #----------------------------
     # Update: Performance Metrics 
@@ -95,7 +95,7 @@ class Writer:
 #--------------------------------
 
 class Logger(Logger):
-    def __init__(self, all_paths, name = "default", version = None, prefix = "", fold_idx=None):
+    def __init__(self, save_dir, name = "default", version = None, prefix = "", fold_idx=None):
         super().__init__()
         logging.debug("custom_logger.py - Initializing Logger")
 
@@ -104,11 +104,11 @@ class Logger(Logger):
         self._experiment = None
         self._version = version
         self.fold_idx = fold_idx
-        self._save_dir = all_paths.results
+        self._save_dir = save_dir
         self.fold_idx = fold_idx
 
         # Ensure directories exist
-        os.makedirs(self._save_dir, exist_ok=True)
+        #os.makedirs(self._save_dir, exist_ok=True)
 
     #----------------------------
     # Gather: Path (Root Folder)
@@ -208,7 +208,7 @@ class Logger(Logger):
 
             return self._experiment
 
-        os.makedirs(self.root_dir, exist_ok=True)
+        #os.makedirs(self.root_dir, exist_ok=True)
 
         self._experiment = Writer(path = self.log_dir, fold_idx=self.fold_idx)
 

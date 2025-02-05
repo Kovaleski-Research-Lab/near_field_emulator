@@ -25,12 +25,8 @@ if __name__ == '__main__':
     torch.set_float32_matmul_precision(config.trainer.matmul_precision)
     
     if directive == 0:
-        # save exact config file for later use
-        os.makedirs(config.paths.results, exist_ok=True)
-        # copy args.config to results folder
-        shutil.copy(args.config, os.path.join(config.paths.results, 'config.yaml'))
         print("Training model...\n")
-        _ = train.run(config)
+        _, _ = train.run(config)
         
     elif directive == 1:
         print('Evaluating model...\n')
@@ -38,27 +34,37 @@ if __name__ == '__main__':
         
     elif directive == 2:
         print('Training model...\n')
-        data_module =train.run(config)
+        _, data_module =train.run(config)
         print('\nTraining complete. Evaluating model...\n')
         eval_model.run(config, data_module)
         
     elif directive == 3:
-        raise NotImplementedError('Loading results not fully implemented yet.')
+        if config.pipeline is not None:
+            print("Running multi-phase pipeline...\n")
+            # Pipeline is already constructed and validated by schema
+            trained_models, data_module = train.run(config)
+            print("\nPipeline training complete. Evaluating final model...\n")
+            eval_model.run(config, data_module, trained_models)
+        else:
+            raise ValueError("Directive 3 requires a 'pipeline' section in the configuration.")
     
     elif directive == 4:
-        raise NotImplementedError('MEEP simulation process not fully implemented yet.')
+        raise NotImplementedError('Loading results not fully implemented yet.')
     
     elif directive == 5:
+        raise NotImplementedError('MEEP simulation process not fully implemented yet.')
+    
+    elif directive == 6:
         print('Preprocessing DFT volumes...')
         preprocess_data.run(config)
         print('Compiling data into .pt file...')
         compile_data.run(config)
         
-    elif directive == 6:
+    elif directive == 7:
         print(f"Encoding {config.model.modelstm.method} modes...")
         modes.run(config)
         
-    elif directive == 7:
+    elif directive == 8:
         print(f'Reconstructing {config.model.modelstm.method} modes...')
         modes.run(config)
         
