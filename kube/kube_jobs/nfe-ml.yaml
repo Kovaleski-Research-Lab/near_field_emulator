@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ethan-nfe-ml
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      name: ethan-nfe-ml
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: ethan-nfe-ml
+        image: docker.io/kovaleskilab/ml_basic:v4-kube
+        command: ["/bin/sh", "-c"]
+        args: ["git clone https://github.com/Kovaleski-Research-Lab/near_field_emulator.git && tail -f /dev/null"]
+        resources:
+          limits:
+            memory: 200Gi
+            cpu: 24
+            nvidia.com/a100: 1
+          requests:
+            memory: 200Gi
+            cpu: 24
+            nvidia.com/a100: 1
+        volumeMounts:
+        - name: nfe-data
+          mountPath: /develop/data/preprocessed_data
+        - name: training-results
+          mountPath: /develop/results
+        - name: shm 
+          mountPath: /dev/shm
+      volumes:
+      - name: nfe-data
+        persistentVolumeClaim:
+          claimName: nfe-data
+      - name: training-results
+        persistentVolumeClaim:
+          claimName: training-results
+      - name: shm
+        emptyDir:
+          medium: Memory
