@@ -51,7 +51,7 @@ model:
     # - full_pipeline: True/False - whether to perform the full pipeline (MLP -> LSTM)
 
     arch: 9
-    model_id: 'BASELINE-full-sequence'
+    model_id: 'sanity-test'
 
     # General Model Parameters
 
@@ -213,8 +213,8 @@ paths:
     volumes: 'nfe-data/volumes'
     library: 'code/near_field_emulator/utils/neighbors_library_allrandom.pkl'
     pretrained_ae: 'autoencoder/model_ae-v1/'
-    pretrained_mlp: 'surrogate/model_BASELINE-full-sequence/mlp/'
-    pretrained_lstm: 'surrogate/model_BASELINE-full-sequence/lstm/'
+    pretrained_mlp: 'surrogate/model_sanity-test/mlp/'
+    pretrained_lstm: 'surrogate/model_sanity-test/lstm/'
     mlp_results: 'mlp/model_BASELINE/'
 
 #--------------------------------

@@ -229,10 +229,9 @@ class NFDataModule(LightningDataModule):
         # Get raw data from the loader
         raw_data = self.raw_loader.load('test')
         
-        # Update the near fields with MLP predictions
+        # Update the near fields with MLP predictions only for validation set
         # Note: We're updating channel 0 of the time dimension (initial condition)
-        for mode, indices in self.index_map.items():
-            raw_data['near_fields'][indices, :, :, :, 0] = mlp_predictions[mode]
+        raw_data['near_fields'][self.index_map['valid'], :, :, :, 0] = mlp_predictions['valid']
             
         # Reprocess the data with updated near fields
         self.dataset = self.processor.process(raw_data, self.conf)
