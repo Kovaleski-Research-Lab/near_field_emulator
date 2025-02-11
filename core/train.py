@@ -215,7 +215,7 @@ def train_phase(conf, data_module, phase_name, custom_processor=None, fold_idx=N
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
         
-    if conf.model.load_checkpoint.mlp and conf.model.arch == 'mlp':
+    if conf.trainer.load_checkpoint['mlp'] and conf.model.arch == 'mlp':
         model_path = os.path.join(conf.paths.pretrained_mlp, 'model.ckpt')
         model_instance.load_state_dict(torch.load(model_path)['state_dict'])
         print(f"Loaded MLP checkpoint from {model_path}")
@@ -225,7 +225,7 @@ def train_phase(conf, data_module, phase_name, custom_processor=None, fold_idx=N
         if src_loss != dst_loss: # only copy if paths are different (new experiment)
             shutil.copy(src_loss, dst_loss)
         
-    if conf.model.load_checkpoint.lstm and conf.model.arch == 'lstm':
+    if conf.trainer.load_checkpoint['lstm'] and conf.model.arch == 'lstm':
         model_path = os.path.join(conf.paths.pretrained_lstm, 'model.ckpt')
         model_instance.load_state_dict(torch.load(model_path)['state_dict'])
         print(f"Loaded LSTM checkpoint from {model_path}")
