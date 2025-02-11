@@ -224,6 +224,7 @@ def train_phase(conf, data_module, phase_name, custom_processor=None, fold_idx=N
         dst_loss = os.path.join(save_dir, 'loss.csv')
         if src_loss != dst_loss: # only copy if paths are different (new experiment)
             shutil.copy(src_loss, dst_loss)
+        return model_instance
         
     if conf.trainer.load_checkpoint['lstm'] and conf.model.arch == 'lstm':
         model_path = os.path.join(conf.paths.pretrained_lstm, 'model.ckpt')
@@ -234,7 +235,8 @@ def train_phase(conf, data_module, phase_name, custom_processor=None, fold_idx=N
         dst_loss = os.path.join(save_dir, 'loss.csv')
         if src_loss != dst_loss: # only copy if paths are different (new experiment)
             shutil.copy(src_loss, dst_loss)
-            
+        return model_instance
+    
     logger = custom_logger.Logger(
         save_dir=save_dir,
         name=f"{conf.model.model_id}_{phase_name}",
