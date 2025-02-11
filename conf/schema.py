@@ -45,10 +45,10 @@ class DiffusionConfig(BaseModel):
     num_generated_frames: int = 14
     prompt: str = ''
     use_half_precision: bool = True
+    
 class ModelConfig(BaseModel):
     arch: str # an int in config.yaml
     model_id: str
-    full_pipeline: bool
     optimizer: str
     learning_rate: float = 1e-3
     lr_scheduler: Literal['CosineAnnealingLR', 'ReduceLROnPlateau']
@@ -88,7 +88,7 @@ class TrainerConfig(BaseModel):
     cross_validation: bool = True
     patience: int = 15
     min_delta: float = 0.0001
-    load_checkpoint: bool = False
+    load_checkpoint: Dict[str, Any]
     
 class PathsConfig(BaseModel):
     root: str
@@ -99,6 +99,8 @@ class PathsConfig(BaseModel):
     volumes: str
     library: str
     pretrained_ae: str
+    pretrained_mlp: str
+    pretrained_lstm: str
     mlp_results: str
     
     @model_validator(mode="after")
@@ -111,6 +113,8 @@ class PathsConfig(BaseModel):
         model.volumes = os.path.join(model.data, model.volumes)
         model.library = os.path.join(model.root, model.library)
         model.pretrained_ae = os.path.join(model.results, model.pretrained_ae)
+        model.pretrained_mlp = os.path.join(model.results, model.pretrained_mlp)
+        model.pretrained_lstm = os.path.join(model.results, model.pretrained_lstm)
         model.mlp_results = os.path.join(model.results, model.mlp_results)
         return model
     

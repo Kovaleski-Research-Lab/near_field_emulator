@@ -52,7 +52,6 @@ model:
 
     arch: 9
     model_id: 'BASELINE-full-sequence'
-    full_pipeline: False
 
     # General Model Parameters
 
@@ -190,7 +189,9 @@ trainer:
     gpu_config: [True, [0]]
     matmul_precision: 'medium'
     valid_rate: 1
-    load_checkpoint: False
+    load_checkpoint:
+        mlp: True
+        lstm: True
 
     # - cross_validation: True/False - whether to perform cross-validation
     # ---> if False, then a 5-fold 80/20 split is used
@@ -212,6 +213,8 @@ paths:
     volumes: 'nfe-data/volumes'
     library: 'code/near_field_emulator/utils/neighbors_library_allrandom.pkl'
     pretrained_ae: 'autoencoder/model_ae-v1/'
+    pretrained_mlp: 'surrogate/model_BASELINE-full-sequence/mlp/'
+    pretrained_lstm: 'surrogate/model_BASELINE-full-sequence/lstm/'
     mlp_results: 'mlp/model_BASELINE/'
 
 #--------------------------------

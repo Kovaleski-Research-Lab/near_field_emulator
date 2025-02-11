@@ -272,7 +272,6 @@ def single_model_eval(conf, data_module=None):
 #--------------------------------
     
 def run(conf, data_module=None, trained_models=None):
-    print(f"The config arch is {conf.model.arch}")
     """Main evaluation entry point"""
     if conf.model.arch == 'mlp-lstm':
         pipeline_eval(conf, data_module, trained_models)

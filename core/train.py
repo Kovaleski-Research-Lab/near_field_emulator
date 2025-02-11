@@ -203,17 +203,38 @@ def train_phase(conf, data_module, phase_name, custom_processor=None, fold_idx=N
     if custom_processor is not None:
         data_module.processor = custom_processor
     # Re-setup the datamodule (raw data is cached, so this re-formats the dataset)
-    print(f"\nIN TRAIN_PHASE, calling data_module.setup(stage='fit')")
-    print(f"the phase name is {phase_name}")
+    print("Formatting the dataset...")
     data_module.setup(stage='fit')
     
     
     # select model instance according to the updated configuration
     model_instance = model_loader.select_model(conf.model)
-    # create the results directory
-    save_dir = os.path.join(conf.paths.results, phase_name)
-    os.makedirs(save_dir, exist_ok=True)
     
+    # results dir configuration
+    save_dir = os.path.join(conf.paths.results, phase_name)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+        
+    if conf.model.load_checkpoint.mlp and conf.model.arch == 'mlp':
+        model_path = os.path.join(conf.paths.pretrained_mlp, 'model.ckpt')
+        model_instance.load_state_dict(torch.load(model_path)['state_dict'])
+        print(f"Loaded MLP checkpoint from {model_path}")
+        # save loss.csv if path is different
+        src_loss = os.path.join(conf.paths.pretrained_mlp, 'loss.csv')
+        dst_loss = os.path.join(save_dir, 'loss.csv')
+        if src_loss != dst_loss: # only copy if paths are different (new experiment)
+            shutil.copy(src_loss, dst_loss)
+        
+    if conf.model.load_checkpoint.lstm and conf.model.arch == 'lstm':
+        model_path = os.path.join(conf.paths.pretrained_lstm, 'model.ckpt')
+        model_instance.load_state_dict(torch.load(model_path)['state_dict'])
+        print(f"Loaded LSTM checkpoint from {model_path}")
+        # save loss.csv if path is different
+        src_loss = os.path.join(conf.paths.pretrained_lstm, 'loss.csv')
+        dst_loss = os.path.join(save_dir, 'loss.csv')
+        if src_loss != dst_loss: # only copy if paths are different (new experiment)
+            shutil.copy(src_loss, dst_loss)
+            
     logger = custom_logger.Logger(
         save_dir=save_dir,
         name=f"{conf.model.model_id}_{phase_name}",
