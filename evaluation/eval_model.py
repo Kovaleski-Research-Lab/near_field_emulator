@@ -196,34 +196,34 @@ def single_model_eval(conf, data_module=None):
         data_module = datamodule.select_data(conf)
         #data_module.prepare_data()
         data_module.setup(stage='test')
-    else:
-        saved_conf = conf
+    #else:
+    #    saved_conf = conf
         
     # Load model checkpoint
     model_path = os.path.join(results_dir, 'model.ckpt')
-    model_instance = model_loader.select_model(saved_conf.model)
+    model_instance = model_loader.select_model(conf.model)
     model_instance.load_state_dict(torch.load(model_path)['state_dict'])
 
     # empty logger so as not to mess with loss.csv
     logger = None
 
     # Checkpoint, EarlyStopping, ProgressBar
-    checkpoint_path = saved_conf.paths.results
+    checkpoint_path = conf.paths.results
     filename = 'model'
     checkpoint_callback = ModelCheckpoint(
         dirpath=checkpoint_path,
         filename=filename,
         save_top_k=1,
         monitor='val_loss',
-        mode='min' if saved_conf.model.objective_function == 'mse' else 'max',
+        mode='min' if conf.model.objective_function == 'mse' else 'max',
         verbose=True
     )
 
     early_stopping = train.CustomEarlyStopping(
         monitor='val_loss',
-        patience=saved_conf.trainer.patience,
-        min_delta=saved_conf.trainer.min_delta,
-        mode='min' if saved_conf.model.objective_function == 'mse' else 'max',
+        patience=conf.trainer.patience,
+        min_delta=conf.trainer.min_delta,
+        mode='min' if conf.model.objective_function == 'mse' else 'max',
         verbose=True
     )
 
@@ -234,9 +234,9 @@ def single_model_eval(conf, data_module=None):
                                     'valid': {'nf_pred': [], 'nf_truth': []}}
     
     # setup the trainer
-    trainer = train.configure_trainer(saved_conf, logger, checkpoint_callback, early_stopping, progress_bar)
+    trainer = train.configure_trainer(conf, logger, checkpoint_callback, early_stopping, progress_bar)
     
-    if (saved_conf.trainer.cross_validation):
+    if (conf.trainer.cross_validation):
         with open(os.path.join(results_dir, "split_info.yaml"), 'r') as f:
             split_info = yaml.safe_load(f)
         train_idx = split_info["train_idx"]
@@ -247,7 +247,7 @@ def single_model_eval(conf, data_module=None):
     trainer.test(model_instance, dataloaders=[data_module.val_dataloader(), data_module.train_dataloader()])
     
     # evaluate
-    if saved_conf.model.arch == 'modelstm':
+    if conf.model.arch == 'modelstm':
         # fetch decoding params
         P = data_module.P
         mean_vec = data_module.mean_vec
@@ -258,16 +258,8 @@ def single_model_eval(conf, data_module=None):
                 model_instance.test_results[split][key] = process_svd_results(
                     model_instance.test_results[split][key], P, mean_vec
                 )
-        
-    if conf.model.full_pipeline:
-        if conf.model.arch == 'mlp':
-            # stack pred train and valid together into one tensor and save to a torch .pt file
-            pred_train = torch.from_numpy(model_instance.test_results['train']['nf_pred'])
-            pred_valid = torch.from_numpy(model_instance.test_results['valid']['nf_pred'])
-            pred = torch.cat((pred_train, pred_valid), dim=0)
-            torch.save(pred, os.path.join(results_dir, 'preds.pt'))
 
-    plotting(saved_conf, model_instance.test_results, 
+    plotting(conf, model_instance.test_results, 
             results_dir)
     
 #--------------------------------
