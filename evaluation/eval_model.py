@@ -184,13 +184,16 @@ def single_model_eval(conf, data_module=None):
     
     # init datamodule
     if data_module is None:
-        # setup new parameter manager based on saved parameters
+        #TODO temporarily not using the saved one
+        '''# setup new parameter manager based on saved parameters
         saved_conf = load_config(os.path.join(results_dir, 'config.yaml'))
         # update select parameters to match current run
         saved_conf.data.wv_eval = conf.data.wv_eval
         
         # init datamodule
-        data_module = datamodule.select_data(saved_conf)
+        data_module = datamodule.select_data(saved_conf)'''
+
+        data_module = data_module.select_data(conf)
         #data_module.prepare_data()
         data_module.setup(stage='test')
     else:

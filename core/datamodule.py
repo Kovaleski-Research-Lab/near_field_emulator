@@ -49,6 +49,8 @@ class RawDataLoader:
                 data['near_fields'] = mapping.l2_norm(data['near_fields'])
         elif stage == "test":
             data = self._load_data(self.conf.data.wv_eval)
+            if self.conf.data.normalize and self.conf.data.wv_train != self.conf.data.wv_eval:
+                data['near_fields'] = mapping.l2_norm(data['near_fields'])
             '''if self.conf.model.full_pipeline and self.conf.model.arch == 'lstm':
                 # Replace first channel with MLP predictions (if applicable)
                 mlp_preds = torch.load(os.path.join(self.conf.paths.mlp_results, 'preds.pt'))

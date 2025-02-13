@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 3
+directive: 1
 deployment: 1
 
 
@@ -50,8 +50,8 @@ model:
     # - model_id: model identifier / name
     # - full_pipeline: True/False - whether to perform the full pipeline (MLP -> LSTM)
 
-    arch: 9
-    model_id: 'sanity-test'
+    arch: 2
+    model_id: 'norm-test'
 
     # General Model Parameters
 
@@ -173,7 +173,7 @@ model:
     # - spacing_mode: 'sequential' or 'distributed'
     # - autoreg: autoregressive mode or teacher forcing - M2M only
 
-    seq_len: 62
+    seq_len: 15
     io_mode: 'one_to_many'
     spacing_mode: 'sequential'
     autoreg: True
@@ -265,8 +265,8 @@ data:
     wv_dict: {'1': 1.06, '2': 1.3, '3': 1.55, '4': 1.65, '5': 2.881}
     wv_preprocess: '3'
     wv_train: '3'
-    wv_eval: '3'
-    normalize: False
+    wv_eval: '4'
+    normalize: True
 
 #--------------------------------
 #       Kube Params
