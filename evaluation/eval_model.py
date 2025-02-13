@@ -193,7 +193,7 @@ def single_model_eval(conf, data_module=None):
         # init datamodule
         data_module = datamodule.select_data(saved_conf)'''
 
-        data_module = data_module.select_data(conf)
+        data_module = datamodule.select_data(conf)
         #data_module.prepare_data()
         data_module.setup(stage='test')
     else:
