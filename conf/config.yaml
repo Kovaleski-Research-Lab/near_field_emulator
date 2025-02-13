@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 1
 
 
@@ -51,7 +51,7 @@ model:
     # - full_pipeline: True/False - whether to perform the full pipeline (MLP -> LSTM)
 
     arch: 2
-    model_id: 'norm-test'
+    model_id: '15-3-norm'
 
     # General Model Parameters
 
@@ -265,7 +265,7 @@ data:
     wv_dict: {'1': 1.06, '2': 1.3, '3': 1.55, '4': 1.65, '5': 2.881}
     wv_preprocess: '3'
     wv_train: '3'
-    wv_eval: '4'
+    wv_eval: '3'
     normalize: True
 
 #--------------------------------
