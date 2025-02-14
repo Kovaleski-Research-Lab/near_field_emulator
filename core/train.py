@@ -439,7 +439,7 @@ def train_with_cross_validation(conf, data_module):
                 record_split_info(fold_idx, train_idx, val_idx, os.path.dirname(best_model_path))
 
     # After all folds, save the best model
-    save_best_model(conf, best_model_path, n_splits)
+    save_best_model(conf, best_model_path, n_splits=n_splits)
 
 #--------------------------------
 # Main Training Entry Point

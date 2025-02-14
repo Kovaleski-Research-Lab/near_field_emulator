@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 0
+directive: 7
 deployment: 1
 
 
@@ -48,16 +48,15 @@ model:
     # *** Full-wave surrogate model ***
         # - 9: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
-    # - full_pipeline: True/False - whether to perform the full pipeline (MLP -> LSTM)
 
-    arch: 2
-    model_id: '15-3-crossval-test'
+    arch: 6
+    model_id: '15-3-test'
 
     # General Model Parameters
 
     optimizer: 'ADAM'
     learning_rate: 1.e-3
-    lr_scheduler: 'CosineAnnealingLR'
+    lr_scheduler: 'CosineAnnealing'
     load_checkpoint: False
     objective_function: 'mse'
 
@@ -183,7 +182,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 2 # maximum
+    num_epochs: 50 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
@@ -195,10 +194,10 @@ trainer:
 
     # - cross_validation: True/False - whether to perform cross-validation
     # ---> if False, then a 5-fold 80/20 split is used
-    cross_validation: True
+    cross_validation: False
 
     # early stopping settings
-    patience: 20
+    patience: 10
     min_delta: 0.0001
 
 #--------------------------------
