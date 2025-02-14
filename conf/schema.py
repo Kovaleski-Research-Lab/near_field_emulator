@@ -245,7 +245,7 @@ class MainConfig(BaseModel):
     physics: PhysicsConfig
     kube: KubeConfig
     pipeline: Optional[List[PipelineConfig]] = None
-    seed: List[Any] = field(default_factory=list)
+    seed: int = 1337
     
     @model_validator(mode="after")
     def validate_results(cls, main):
