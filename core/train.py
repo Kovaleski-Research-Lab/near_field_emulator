@@ -376,7 +376,7 @@ def train_with_cross_validation(conf, data_module):
     """Train using K-Fold Cross Validation."""
     full_dataset = data_module.dataset
     n_splits = conf.data.n_folds
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=conf.seed_value)
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=conf.seed)
 
     best_val_loss = float('-inf') if conf.model.objective_function == 'psnr' else float('inf')
     best_model_path = None
