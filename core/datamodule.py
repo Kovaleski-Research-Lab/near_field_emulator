@@ -38,6 +38,8 @@ class RawDataLoader:
     def __init__(self, conf):
         self.conf = conf
         self.data_cache: Dict[str, dict] = {} # Cache keyed by stage ("fit, "test")
+        #self.train_means = None
+        #self.train_stds = None
         
     def load(self, stage: str) -> dict:
         if stage in self.data_cache:
@@ -46,15 +48,28 @@ class RawDataLoader:
         if stage in ["fit", None]:
             data = self._load_data(self.conf.data.wv_train)
             if self.conf.data.normalize:
-                data['near_fields'] = mapping.l2_norm(data['near_fields'])
+                # Calculate and store training statistics
+                train_means = data['near_fields'].mean(dim=(1,2,3), keepdim=True)
+                train_stds = data['near_fields'].std(dim=(1,2,3), keepdim=True)
+                # Standardize using these statistics
+                data['near_fields'] = (data['near_fields'] - train_means) / train_stds
+                print(f"Standardized near fields for training set")
+                # save training statistics
+                torch.save({
+                    'means': train_means,
+                    'stds': train_stds
+                }, os.path.join(self.conf.paths.results, 'train_stats.pt'))
         elif stage == "test":
             data = self._load_data(self.conf.data.wv_eval)
-            if self.conf.data.normalize and self.conf.data.wv_train != self.conf.data.wv_eval:
-                data['near_fields'] = mapping.l2_norm(data['near_fields'])
-            '''if self.conf.model.full_pipeline and self.conf.model.arch == 'lstm':
-                # Replace first channel with MLP predictions (if applicable)
-                mlp_preds = torch.load(os.path.join(self.conf.paths.mlp_results, 'preds.pt'))
-                data['near_fields'][..., 0] = mlp_preds'''
+            if self.conf.data.normalize: # and self.conf.data.wv_train != self.conf.data.wv_eval:
+                #if self.train_means is None or self.train_stds is None:
+                #    raise ValueError("Training set statistics not available. Must load training data before evaluation data.")
+                # Standardize using training statistics
+                train_stats = torch.load(os.path.join(self.conf.paths.results, 'train_stats.pt'))
+                train_means = train_stats['means']
+                train_stds = train_stats['stds']
+                data['near_fields'] = (data['near_fields'] - train_means) / train_stds
+                print(f"Standardized near fields for validation set using training statistics")
         else:
             raise ValueError(f"Unsupported stage: {stage}")
 
@@ -170,7 +185,6 @@ class NFDataModule(LightningDataModule):
         self.path_data = conf.paths.data
         self.normalize = conf.data.normalize
         self.batch_size = conf.trainer.batch_size
-        self.transform = transform #TODO
         self.wv_dict = conf.data.wv_dict
         self.wv_train = conf.data.wv_train
         self.wv_eval = conf.data.wv_eval
@@ -355,6 +369,7 @@ class WaveModel_Dataset(Dataset):
         self.labels = labels
 
     def __getitem__(self, index):
+        
         return self.samples[index], self.labels[index]
 
     def __len__(self):

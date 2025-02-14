@@ -97,3 +97,10 @@ def l2_norm(data):
     l2_norms = l2_norms + 1e-8
     data = data / l2_norms
     return data
+
+def standardize(data):
+    """Assuming data of shape [samples, channels, H, W, slices]"""
+    means = data.mean(dim=(1,2,3), keepdim=True)
+    stds = data.std(dim=(1,2,3), keepdim=True)
+    data = (data - means) / stds
+    return data

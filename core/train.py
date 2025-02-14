@@ -385,8 +385,8 @@ def train_with_cross_validation(conf, data_module):
 
     for fold_idx, (train_idx, val_idx) in enumerate(kf.split(full_dataset)):
         logging.info(f"Fold {fold_idx + 1}/{n_splits}")
-        if fold_idx > 0:
-            clear_memory()
+        #if fold_idx > 0:
+        #    clear_memory()
 
         model_instance = model_loader.select_model(conf.model, fold_idx)
         data_module.setup_fold(train_idx, val_idx)
@@ -437,16 +437,6 @@ def train_with_cross_validation(conf, data_module):
                 best_model_path = checkpoint_callback.best_model_path
                 logging.info(f"New best model found in fold {fold_idx + 1} with val loss: {best_val_loss:.6f}")
                 record_split_info(fold_idx, train_idx, val_idx, os.path.dirname(best_model_path))
-
-        # Testing if needed
-        if conf.trainer.include_testing:
-            trainer.test(model_instance, dataloaders=[data_module.val_dataloader(), data_module.train_dataloader()])
-            fold_results.append(model_instance.test_results)
-        else:
-            base_path = os.path.dirname(best_model_path)
-            # remove train_info and valid_info dirs from base_path #TODO: cleaner to have this in logger
-            shutil.rmtree(os.path.join(base_path, 'train_info'))
-            shutil.rmtree(os.path.join(base_path, 'valid_info'))
 
     # After all folds, save the best model
     save_best_model(conf, best_model_path, n_splits)
