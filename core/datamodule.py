@@ -196,6 +196,8 @@ class NFDataModule(LightningDataModule):
         self.train = None
         self.valid = None
         self.test = None
+        self.P = None
+        self.mean_vec = None
         
         self.initialize_cpus(self.n_cpus)
 
@@ -216,6 +218,13 @@ class NFDataModule(LightningDataModule):
         self.dataset = self.processor.process(raw_data, self.conf)
         # Create an index map for train/validation split.
         self.index_map = self._create_index_map(raw_data)
+        
+        # Transfer P and mean_vec from raw_loader if they exist
+        if hasattr(self.raw_loader, 'P'):
+            self.P = self.raw_loader.P
+        if hasattr(self.raw_loader, 'mean_vec'):
+            self.mean_vec = self.raw_loader.mean_vec
+            
         if stage in ["fit", None]:
             self.setup_train_val()
         elif stage == "test":

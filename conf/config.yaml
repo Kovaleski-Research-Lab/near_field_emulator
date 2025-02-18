@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 7
+directive: 0
 deployment: 1
 
 
@@ -49,14 +49,14 @@ model:
         # - 9: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 6
-    model_id: '15-3-test'
+    arch: 5
+    model_id: '15-3-baseline'
 
     # General Model Parameters
 
     optimizer: 'ADAM'
     learning_rate: 1.e-3
-    lr_scheduler: 'CosineAnnealing'
+    lr_scheduler: 'CosineAnnealingLR'
     load_checkpoint: False
     objective_function: 'mse'
 

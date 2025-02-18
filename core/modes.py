@@ -49,6 +49,19 @@ def compute_global_svd(M_centered):
       S_big: shape [min(N_total, 27556)]
       V_big: shape [27556,  min(N_total, 27556)]
     """
+    # Add shape validation
+    if len(M_centered.shape) != 2:
+        raise ValueError(f"Expected 2D matrix, got shape {M_centered.shape}")
+        
+    print(f"M_centered shape before SVD: {M_centered.shape}")
+    
+    # Ensure matrix has valid dimensions for SVD
+    if 0 in M_centered.shape:
+        raise ValueError(f"Invalid matrix dimensions for SVD: {M_centered.shape}")
+        
+    # Ensure the matrix is contiguous in memory
+    M_centered = M_centered.contiguous()
+    
     U_big, S_big, V_big = torch.linalg.svd(M_centered, full_matrices=False)
     
     return U_big, S_big, V_big
@@ -496,6 +509,10 @@ def encode_modes(data, config):
     
     if method == 'svd': # encoding singular value decomposition
         #encoded_fields = encode_svd(near_fields)
+        # Ensure near_fields is properly shaped before centering
+        if len(near_fields.shape) != 5:  # [samples, channels, H, W, slices]
+            raise ValueError(f"Expected 5D tensor, got shape {near_fields.shape}")
+        
         M_centered, mean_vec = prepare_training_matrix(near_fields)
         U_big, S_big, V_big = compute_global_svd(M_centered)
         encoded_fields = {
@@ -525,11 +542,20 @@ def run(config):
         full_data = torch.load(os.path.join(datasets_path, f'dataset_155.pt'), weights_only=True)
 
         mask = full_data['tag'] == 1
+        print(f"Number of samples after filtering: {mask.sum()}")
+
         
         filtered_data = {
             'near_fields': full_data['near_fields'][mask],
             'tag': full_data['tag'][mask]
         }
+        print(f"Filtered data shape before random selection: {filtered_data['near_fields'].shape}")
+        
+        # randomly select half of the data
+        shrink = int(filtered_data['near_fields'].shape[0] / 10)
+        filtered_data['near_fields'] = filtered_data['near_fields'][:shrink]
+        filtered_data['tag'] = filtered_data['tag'][:shrink]
+        print(f"Filtered data shape after random selection: {filtered_data['near_fields'].shape}")
 
         # encode accordingly
         encoded_data = encode_modes(filtered_data, config)

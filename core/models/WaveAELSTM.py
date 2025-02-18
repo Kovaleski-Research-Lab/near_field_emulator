@@ -184,14 +184,14 @@ class WaveAELSTM(WaveModel):
         # Encoder: downsampling
         self.encoder = Encoder(
             channels=self.arch_params.encoder_channels,
-            params=self.conf.autoencoder
+            conf=self.conf.autoencoder
         )
         
         # Decoder: upsampling
         if self.use_decoder == True:
             self.decoder = Decoder(
                 channels=self.decoder_channels,
-                params=self.conf.autoencoder
+                conf=self.conf.autoencoder
             )
     
         if self.pretrained == True:

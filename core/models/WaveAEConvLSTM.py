@@ -141,14 +141,14 @@ class WaveAEConvLSTM(WaveModel):
         # Encoder: downsampling
         self.encoder = Encoder(
             channels=self.encoder_channels,
-            params=self.params_ae
+            conf=self.params_ae
         )
         
         # Decoder: upsampling
         if self.use_decoder == True:
             self.decoder = Decoder(
                 channels=self.decoder_channels,
-                params=self.params_ae
+                conf=self.params_ae
             )
     
         if self.pretrained == True:
