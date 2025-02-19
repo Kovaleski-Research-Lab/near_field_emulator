@@ -32,10 +32,10 @@ def plotting(conf, test_results, results_dir, fold_num=None):
     The generation of a variety of plots and performance metrics
     """
     # plot training and validation loss from recorded loss.csv once
-    if not os.path.exists(os.path.join(results_dir, "loss_plots", "loss.pdf")):
+    if not os.path.exists(os.path.join(results_dir, "loss_plots", "combined_loss.pdf")):
         os.makedirs(os.path.join(results_dir, "loss_plots"), exist_ok=True)
         print("Created directory: loss_plots")
-        print("\nGenerating loss plots...")
+        print("\nGenerating loss plot...")
         eval.plot_loss(conf, save_dir=results_dir, save_fig=True)
         
     # Create subdirectories for different types of results

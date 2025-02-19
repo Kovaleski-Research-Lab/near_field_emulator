@@ -56,7 +56,7 @@ class RawDataLoader:
                 # load global training statistics
                 train_stats = torch.load(os.path.join(self.conf.paths.data, 
                                                 'preprocessed_data', 
-                                                'global_train_stats.pt'))
+                                                'full_train_stats.pt'))
                 train_means = train_stats['means']
                 train_stds = train_stats['stds']
                 data['near_fields'] = (data['near_fields'] - train_means) / train_stds

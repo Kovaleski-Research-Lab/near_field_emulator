@@ -166,8 +166,18 @@ def clean_loss_df(df):
     df = df.set_index('epoch')
     df = df.sort_index()
     return df
-
-def plot_loss(conf, save_dir, min_list=[None, None], max_list=[None, None], save_fig=False):
+            
+def plot_loss(conf, save_dir, min_val=None, max_val=None, save_fig=False):
+    """
+    Plot training and validation losses on the same plot.
+    
+    Args:
+        conf: Configuration object containing model and training parameters
+        save_dir: Directory where loss files and output plot should be saved
+        min_val (float, optional): Minimum value for y-axis
+        max_val (float, optional): Maximum value for y-axis
+        save_fig (bool): Whether to save the figure to file
+    """
     model_identifier = get_model_identifier(conf)
     
     if conf.trainer.cross_validation:
@@ -209,40 +219,24 @@ def plot_loss(conf, save_dir, min_list=[None, None], max_list=[None, None], save
         std_val_loss = val_loss_df.std(axis=1, skipna=True)
         
         plt.style.use("ggplot")
-        fig, ax = plt.subplots(1, 2, figsize=(12, 4.5))
+        fig, ax = plt.subplots(figsize=(8, 6))
         
         # Plot training mean and std
-        ax[0].plot(mean_train_loss.index, mean_train_loss.values, color='red', label='Training Mean')
-        ax[0].fill_between(mean_train_loss.index,
-                           mean_train_loss.values - std_train_loss.values,
-                           mean_train_loss.values + std_train_loss.values,
-                           color='red', alpha=0.3, label='Training Std Dev')
-        ax[0].set_ylabel(f"{conf.model.objective_function} Loss", fontsize=10)
-        ax[0].set_xlabel("Epoch", fontsize=10)
-        ax[0].set_title("Training Loss", fontsize=12)
-        ax[0].set_ylim([min_list[0], max_list[0]])
-        ax[0].legend()
+        ax.plot(mean_train_loss.index, mean_train_loss.values, 
+                color='red', label='Training Mean')
+        ax.fill_between(mean_train_loss.index,
+                        mean_train_loss.values - std_train_loss.values,
+                        mean_train_loss.values + std_train_loss.values,
+                        color='red', alpha=0.3, label='Training Std Dev')
         
         # Plot validation mean and std
-        ax[1].plot(mean_val_loss.index, mean_val_loss.values, color='blue', label='Validation Mean')
-        ax[1].fill_between(mean_val_loss.index,
-                           mean_val_loss.values - std_val_loss.values,
-                           mean_val_loss.values + std_val_loss.values,
-                           color='blue', alpha=0.3, label='Validation Std Dev')
-        ax[1].set_ylabel(f"{conf.model.objective_function} Loss", fontsize=10)
-        ax[1].set_xlabel("Epoch", fontsize=10)
-        ax[1].set_title("Validation Loss", fontsize=12)
-        ax[1].set_ylim([min_list[1], max_list[1]])
-        ax[1].legend()
+        ax.plot(mean_val_loss.index, mean_val_loss.values, 
+                color='blue', label='Validation Mean')
+        ax.fill_between(mean_val_loss.index,
+                        mean_val_loss.values - std_val_loss.values,
+                        mean_val_loss.values + std_val_loss.values,
+                        color='blue', alpha=0.3, label='Validation Std Dev')
         
-        fig.suptitle(model_identifier)
-        fig.tight_layout()
-        
-        if save_fig:
-            save_eval_item(save_dir, fig, 'loss.pdf', 'loss')
-        else:
-            plt.show()
-    
     else:
         # Single run scenario
         loss_file = os.path.join(save_dir, "loss.csv")
@@ -251,36 +245,33 @@ def plot_loss(conf, save_dir, min_list=[None, None], max_list=[None, None], save
             return
         
         df = pd.read_csv(loss_file)
-        df = clean_loss_df(df)  # Clean the df to properly align train and val loss per epoch
+        df = clean_loss_df(df)
         
         if 'train_loss' not in df.columns or 'val_loss' not in df.columns:
             print("train_loss or val_loss columns not found in cleaned DataFrame.")
             return
         
         plt.style.use("ggplot")
-        fig, ax = plt.subplots(1, 2, figsize=(12, 4.5))
+        fig, ax = plt.subplots(figsize=(8, 6))
+        
+        ax.plot(df.index, df['train_loss'].values, color='red', label='Training Loss')
+        ax.plot(df.index, df['val_loss'].values, color='blue', label='Validation Loss')
 
-        ax[0].plot(df.index, df['train_loss'].values, color='red', label='Training Loss')
-        ax[0].set_ylabel(f"{conf.model.objective_function} Loss", fontsize=10)
-        ax[0].set_xlabel("Epoch", fontsize=10)
-        ax[0].set_title("Training Loss", fontsize=12)
-        ax[0].set_ylim([min_list[0], max_list[0]])
-        ax[0].legend()
-
-        ax[1].plot(df.index, df['val_loss'].values, color='blue', label='Validation Loss')
-        ax[1].set_ylabel(f"{conf.model.objective_function} Loss", fontsize=10)
-        ax[1].set_xlabel("Epoch", fontsize=10)
-        ax[1].set_title("Validation Loss", fontsize=12)
-        ax[1].set_ylim([min_list[1], max_list[1]])
-        ax[1].legend()
-
-        fig.suptitle(model_identifier)
-        fig.tight_layout()
-
-        if save_fig:
-            save_eval_item(save_dir, fig, 'loss.pdf', 'loss')
-        else:
-            plt.show()
+    # Common plot settings
+    ax.set_ylabel(f"{conf.model.objective_function.upper()} Loss", fontsize=10)
+    ax.set_xlabel("Epoch", fontsize=10)
+    ax.set_title("Training and Validation Loss", fontsize=12)
+    if min_val is not None and max_val is not None:
+        ax.set_ylim([min_val, max_val])
+    ax.legend()
+    
+    fig.suptitle(model_identifier, fontsize=8)
+    fig.tight_layout()
+    
+    if save_fig:
+        save_eval_item(save_dir, fig, 'combined_loss.pdf', 'loss')
+    else:
+        plt.show()
 
 def calculate_metrics(truth, pred):
     """
@@ -825,7 +816,7 @@ def construct_results_table(model_names, model_types):
     
     print("\nLaTeX Table:")
     print(latex_table)
-    
+
 if __name__ == "__main__":
     # fetch the model names from command line args
     import argparse
