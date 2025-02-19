@@ -11,7 +11,8 @@ spec:
       restartPolicy: Never
       containers:
       - name: ethan-nfe-ml
-        image: docker.io/kovaleskilab/ml_ssh:v1
+        image: docker.io/kovaleskilab/ml_ssh:latest
+        imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
         args: ["git clone https://github.com/Kovaleski-Research-Lab/near_field_emulator.git && tail -f /dev/null"]
         resources:
