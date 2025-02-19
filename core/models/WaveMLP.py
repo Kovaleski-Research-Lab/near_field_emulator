@@ -47,6 +47,8 @@ class WaveMLP(LightningModule):
             self.strat = 'patch'
         elif self.conf.mlp_strategy == 2:
             self.strat = 'distributed'
+        elif self.conf.mlp_strategy == 3:
+            self.strat = 'field2field'
         else:
             raise ValueError("Approach not recognized.")
         
@@ -78,7 +80,15 @@ class WaveMLP(LightningModule):
                 # build MLPs
                 self.mlp_real = self.build_mlp(self.num_design_conf, self.conf.mlp_real)
                 self.mlp_imag = self.build_mlp(self.num_design_conf, self.conf.mlp_imag)
-            
+                
+        elif self.strat == 'field2field':
+            self.output_size = 166 * 166
+            if self.name == 'cvnn':
+                self.cvnn = self.build_mlp(self.output_size, self.conf.cvnn)
+            else:
+                self.mlp_real = self.build_mlp(self.output_size, self.conf.mlp_real)
+                self.mlp_imag = self.build_mlp(self.output_size, self.conf.mlp_imag)
+        
         else:
             # Build full MLPs
             self.output_size = 166 * 166
@@ -192,6 +202,14 @@ class WaveMLP(LightningModule):
                 # Reshape to patch_size x patch_size
                 real_output = real_output.view(-1, self.patch_size, self.patch_size)
                 imag_output = imag_output.view(-1, self.patch_size, self.patch_size)
+            elif self.strat == 'field2field':
+                # in this case, radii is actually a field, specifically our input field
+                batch_size = radii.size(0)
+                real_output = self.mlp_real(radii[:, 0, :, :].reshape(batch_size, -1))
+                imag_output = self.mlp_imag(radii[:, 1, :, :].reshape(batch_size, -1))
+                # Reshape to image size
+                real_output = real_output.view(-1, 166, 166)
+                imag_output = imag_output.view(-1, 166, 166)
             else:
                 # Full approach
                 real_output = self.mlp_real(radii)
@@ -200,7 +218,7 @@ class WaveMLP(LightningModule):
                 real_output = real_output.view(-1, 166, 166)
                 imag_output = imag_output.view(-1, 166, 166)
 
-                return real_output, imag_output
+            return real_output, imag_output
         
     def assemble_patches(self, patches, batch_size):
         # reshape patches into grid

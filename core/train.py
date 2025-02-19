@@ -447,6 +447,7 @@ def train_with_cross_validation(conf, data_module):
 
 def run(conf, data_module=None, pipeline=None):
     logging.debug("train.py() | running training")
+    seed_everything(conf.seed, workers=True)
     
     # save exact config file for later use
     os.makedirs(conf.paths.results, exist_ok=True)

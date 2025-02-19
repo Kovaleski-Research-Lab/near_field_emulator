@@ -344,9 +344,11 @@ class WaveMLP_Dataset(Dataset):
         if self.transform:   
             near_field = self.transform(near_field)
         
-        logging.debug(f"WaveMLP_Dataset | near_field shape: {near_field.shape}")
-        
-        return near_field, radius
+        if self.approach == 3:
+            # near field is [2,166,166,2], return the separated dim3
+            return near_field[:, :, :, 1], near_field[:, :, :, 0]
+        else:
+            return near_field, radius
     
     def format_data(self):
         self.radii = self.data['radii']
@@ -365,8 +367,11 @@ class WaveMLP_Dataset(Dataset):
             self.near_fields = torch.cat((mag, phase), dim=1) # [num_samples, r/i, 166, 166]
         else: # using newer dataset (dataset.pt), simulated for time series models
             temp_nf_1550 = self.data['near_fields'] # [num_samples, 2, 166, 166, 63]
-            # grab the final slice
-            self.near_fields = temp_nf_1550[:, :, :, :, 0] # [num_samples, 2, 166, 166]
+            if self.approach == 3:
+                self.near_fields = torch.stack((temp_nf_1550[..., 0], temp_nf_1550[..., -1]), dim=4) # [num_samples, 2, 166, 166, 2]
+            else:
+                # grab the final slice
+                self.near_fields = temp_nf_1550[:, :, :, :, 0] # [num_samples, 2, 166, 166]
             
 class WaveModel_Dataset(Dataset):
     """

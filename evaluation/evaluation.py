@@ -286,7 +286,7 @@ def calculate_metrics(truth, pred):
     """
     Calculate various metrics between ground truth and predictions.
     Also compute MSE at each slice if it's a 5D shape (N, T, R, X, Y).
-    """
+    """      
     truth_torch = torch.tensor(truth) if not isinstance(truth, torch.Tensor) else truth
     pred_torch  = torch.tensor(pred)  if not isinstance(pred, torch.Tensor)  else pred
     # compute metrics

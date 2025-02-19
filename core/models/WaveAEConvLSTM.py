@@ -75,59 +75,58 @@ class WaveAEConvLSTM(WaveModel):
         # Forward pass
         preds, _ = self.forward(samples)
         
-        # encoding the labels
+        # If not using decoder, encode the labels to match prediction space
         if self.use_decoder == False:
-            self.encoding_done = False # reset bc we need to encode again
-            labels = self.process_ae(labels) # encode ground truths
-            if self.method == 'conv':
-                raise NotImplementedError("need to finish implementing conv encoding for labels")
-            else:
-                raise ValueError(f"Unsupported mode for WaveAEConvLSTM: {self.method}")
+            self.encoding_done = False  # reset bc we need to encode again
+            labels = labels.view(labels.size(0), labels.size(1), -1)
+            labels = self.process_ae(labels)  # encode ground truths
             
+            # Get the actual dimensions from the predictions
+            pred_size = preds.size()
+            #print(f"Prediction size: {pred_size}")  # Debug print
+            
+            # Reshape labels to match prediction dimensions
+            labels = labels.view(batch_size, self.seq_len, -1)
+            
+            # Don't reshape predictions since they're already in encoded space
+            preds = preds.view(batch_size, self.seq_len, -1)
+        else:
+            # Only reshape predictions if using decoder
+            preds = preds.view(batch_size, self.seq_len, r_i, xdim, ydim)
+        
         # Compute loss
         loss_dict = self.objective(preds, labels)
         loss = loss_dict['loss']
         
-        # reshape preds for metrics
-        if self.io_mode == "one_to_many":
-            preds = preds.view(batch_size, self.seq_len, r_i, xdim, ydim)
-        elif self.io_mode == "many_to_many":
-            preds = preds.view(batch_size, self.seq_len, r_i, xdim, ydim)
-        else:
-            # other modes not implemented
-            raise NotImplementedError
-
         return loss, preds
         
     def organize_testing(self, preds, batch, batch_idx, dataloader_idx=0):
         samples, labels = batch
-        preds_np = preds.detach().cpu().numpy()
-        labels_np = labels.detach().cpu().numpy()
         
         # Determine the mode based on dataloader_idx
-        if dataloader_idx == 0:
-            mode = 'valid'
-        elif dataloader_idx == 1:
-            mode = 'train'
-        else:
-            raise ValueError(f"Invalid dataloader index: {dataloader_idx}")
+        mode = 'valid' if dataloader_idx == 0 else 'train'
         
-        # Append predictions
+        # Handle predictions and labels based on decoder usage
+        if self.use_decoder:
+            preds_np = preds.detach().cpu().numpy()
+            labels_np = labels.detach().cpu().numpy()
+        else:
+            # When not using decoder, keep both in flattened encoded space
+            batch_size, seq_len, encoded_dim = preds.size()
+            preds_np = preds.detach().cpu().numpy()
+            
+            # Reshape labels to match prediction space
+            labels = labels.view(labels.size(0), labels.size(1), -1)  # Flatten spatial dims
+            self.encoding_done = False  # Reset encoding flag
+            encoded_labels = self.process_ae(labels)  # Encode labels
+            labels_np = encoded_labels.detach().cpu().numpy()
+            
+            # Verify shapes match
+            assert preds_np.shape == labels_np.shape, f"Shape mismatch: preds {preds_np.shape} vs labels {labels_np.shape}"
+        
+        # Store results
         self.test_results[mode]['nf_pred'].append(preds_np)
-        
-        # need to determine if we decoded to match preds and labels
-        if self.use_decoder == False:
-            self.encoding_done = False # reset bc we need to encode again
-            labels = labels.view(labels.size(0), labels.size(1), -1)
-            labels = self.process_ae(labels) # encode ground truths
-            if self.method == 'conv':
-                raise NotImplementedError("need to finish implementing WaveAEConvLSTM")
-            else:
-                raise ValueError(f"Unsupported AE mode for WaveAEConvLSTM: {self.method}")
-            labels = labels.view(labels.size(0), labels.size(1), 2, xdim, ydim)
-            self.test_results[mode]['nf_truth'].append(labels.detach().cpu().numpy())
-        else:
-            self.test_results[mode]['nf_truth'].append(labels_np)
+        self.test_results[mode]['nf_truth'].append(labels_np)
             
     def configure_ae(self):
         # Calculate size after each conv layer
@@ -153,9 +152,24 @@ class WaveAEConvLSTM(WaveModel):
     
         if self.pretrained == True:
             # load pretrained autoencoder
-            dirpath = '/develop/meep_meep/autoencoder/model_ae-v1/'
+            dirpath = '/develop/results/meep_meep/autoencoder/model_ae-v1/'
             checkpoint = torch.load(dirpath + "model.ckpt")
             encoder_state_dict = {}
+            
+            # Print architecture details
+            '''print("Pretrained model architecture:")
+            for key, value in checkpoint['state_dict'].items():
+                if isinstance(value, torch.Tensor):
+                    print(f"{key}: {value.shape}")
+                    
+            # Update channels to match pretrained model
+            self.encoder_channels = [2]  # Input channels
+            current_channels = 2
+            for key, value in checkpoint['state_dict'].items():
+                if 'encoder' in key and 'weight' in key and len(value.shape) == 4:
+                    out_channels = value.shape[0]
+                    self.encoder_channels.append(out_channels)
+                    current_channels = out_channels'''
 
             # extract layers for the encoder
             for key, value in checkpoint['state_dict'].items():
@@ -190,10 +204,19 @@ class WaveAEConvLSTM(WaveModel):
     
     def process_ae(self, x, lstm_out=None):
         if self.encoding_done == False: # encode the input
-            batch, seq_len, r_i, xdim, ydim = x.size()
-            if xdim != 166:
-                raise Warning(f"Input spatial size must be 166, got {xdim}.")
-            x = x.view(batch, seq_len, 2, self.spatial, self.spatial)
+            # Handle both 5D and 3D input tensors
+            if len(x.shape) == 5:
+                batch, seq_len, r_i, xdim, ydim = x.size()
+                if xdim != 166:
+                    raise Warning(f"Input spatial size must be 166, got {xdim}.")
+                x = x.view(batch, seq_len, 2, self.spatial, self.spatial)
+            elif len(x.shape) == 3:
+                batch, seq_len, flattened = x.size()
+                # Reshape flattened dimension back to 2D spatial
+                x = x.view(batch, seq_len, 2, self.spatial, self.spatial)
+            else:
+                raise ValueError(f"Expected 5D or 3D tensor, got shape {x.shape}")
+                
             if lstm_out is None: # encoder
                 # process sequence through encoder
                 encoded_sequence = []
