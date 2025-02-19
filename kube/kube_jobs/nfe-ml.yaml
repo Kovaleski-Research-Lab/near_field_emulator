@@ -14,7 +14,7 @@ spec:
         image: docker.io/kovaleskilab/ml_ssh:latest
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
-        args: ["git clone https://github.com/Kovaleski-Research-Lab/near_field_emulator.git && tail -f /dev/null"]
+        args: ["git clone https://github.com/Kovaleski-Research-Lab/near_field_emulator.git && tail -f /dev/null && /usr/sbin/sshd -D"]
         resources:
           limits:
             memory: 300Gi
