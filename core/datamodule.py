@@ -38,40 +38,28 @@ class RawDataLoader:
     def __init__(self, conf):
         self.conf = conf
         self.data_cache: Dict[str, dict] = {} # Cache keyed by stage ("fit, "test")
-        #self.train_means = None
-        #self.train_stds = None
-        
+
     def load(self, stage: str) -> dict:
         if stage in self.data_cache:
             return self.data_cache[stage]
         
+        # load the data based on our stage
         if stage in ["fit", None]:
             data = self._load_data(self.conf.data.wv_train)
-            if self.conf.data.normalize:
-                # Calculate and store training statistics
-                train_means = data['near_fields'].mean(dim=(1,2,3), keepdim=True)
-                train_stds = data['near_fields'].std(dim=(1,2,3), keepdim=True)
-                # Standardize using these statistics
-                data['near_fields'] = (data['near_fields'] - train_means) / train_stds
-                print(f"Standardized near fields for training set")
-                # save training statistics
-                torch.save({
-                    'means': train_means,
-                    'stds': train_stds
-                }, os.path.join(self.conf.paths.results, 'train_stats.pt'))
         elif stage == "test":
             data = self._load_data(self.conf.data.wv_eval)
-            if self.conf.data.normalize: # and self.conf.data.wv_train != self.conf.data.wv_eval:
-                #if self.train_means is None or self.train_stds is None:
-                #    raise ValueError("Training set statistics not available. Must load training data before evaluation data.")
-                # Standardize using training statistics
-                train_stats = torch.load(os.path.join(self.conf.paths.results, 'train_stats.pt'))
+        else:
+            raise ValueError(f"Unsupported stage: {stage}")
+        
+        # standardize the data if requested
+        if self.conf.data.normalize:
+                # load global training statistics
+                train_stats = torch.load(os.path.join(self.conf.paths.data, 
+                                                'preprocessed_data', 
+                                                'global_train_stats.pt'))
                 train_means = train_stats['means']
                 train_stds = train_stats['stds']
                 data['near_fields'] = (data['near_fields'] - train_means) / train_stds
-                print(f"Standardized near fields for validation set using training statistics")
-        else:
-            raise ValueError(f"Unsupported stage: {stage}")
 
         self.data_cache[stage] = data
         return data
