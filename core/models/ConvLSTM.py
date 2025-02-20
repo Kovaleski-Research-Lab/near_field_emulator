@@ -87,10 +87,21 @@ class ConvLSTM(nn.Module):
                                          kernel_size, padding, frame_size)
         
         # for converting hidden states to next step inputs
-        self.output_proj = nn.Conv2d(
+        '''self.output_proj = nn.Conv2d(
             in_channels=out_channels,  # 64
             out_channels=in_channels,  # 2
             kernel_size=1  # 1x1 conv
+        )'''
+        self.output_proj = nn.Sequential(
+            nn.Conv2d(out_channels, out_channels // 2, kernel_size=3, padding=1),
+            nn.LeakyReLU(0.2),
+            nn.Conv2d(out_channels // 2, in_channels, kernel_size=3, padding=1),
+            nn.Tanh()
+        )
+        
+        self.smoothing = nn.Sequential(
+            nn.ReplicationPad2d(2),
+            nn.AvgPool2d(kernel_size=5, stride=1)
         )
 
     def forward(self, x, meta=None, mode="one_to_many", autoregressive=False):
@@ -131,10 +142,21 @@ class ConvLSTM(nn.Module):
                     h, c = self.convLSTMcell(current_input, h, c)
                     output[:, t] = h
                     # escape hidden representation
-                    current_input = self.output_proj(h)
+                    current_input = self.smoothing(self.output_proj(h))
             else: # input is current timestep - teacher forcing
                 for t in range(seq_len):
                     current_input = x[:, t] # [batch, 2, 166, 166]
                     h, c = self.convLSTMcell(current_input, h, c)
-                    output[:, t] = h       
+                    output[:, t] = h
+                    
+        # Apply smoothing to final output if needed
+        if mode == "one_to_many" or (mode == "many_to_many" and not autoregressive):
+            # Reshape output for smoothing
+            B, T, C, H, W = output.size()
+            output = output.view(B * T, C, H, W)
+            output = self.output_proj(output)
+            output = self.smoothing(output)
+            # Reshape back
+            output = output.view(B, T, 2, H, W)
+                   
         return output, (h, c)

@@ -68,7 +68,7 @@ def plotting(conf, test_results, results_dir, fold_num=None):
     #if model_type == 'lstm' or model_type == 'convlstm':
     eval.plot_absolute_difference(test_results, resub=True, sample_idx=10, 
                                   save_fig=True, save_dir=plots_dir,
-                                  arch=model_type, fold_num=fold_num)
+                                  arch=model_type, fold_num=fold_num, fixed_scale=True)
     
     # visualize performance with animation
     if model_type != 'autoencoder' and model_type != 'mlp':

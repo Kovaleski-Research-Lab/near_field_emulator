@@ -42,16 +42,16 @@ class WaveConvLSTM(WaveModel):
                     self.spatial, self.spatial)
         
         # invoke for specified mode (i.e. many_to_many)
-        lstm_out, meta = self.arch(x, meta, mode=self.io_mode, 
+        preds, meta = self.arch(x, meta, mode=self.io_mode, 
                                     autoregressive=self.autoreg)
         
         # reshape for conv
-        b, s, ch, he, w = lstm_out.size()
-        lstm_out = lstm_out.view(b * s, ch, he, w)
+        #b, s, ch, he, w = lstm_out.size()
+        #lstm_out = lstm_out.view(b * s, ch, he, w)
         # apply conv + tanh
-        preds = self.linear(lstm_out)
+        #preds = self.linear(lstm_out)
         # reshape back
-        preds = preds.view(b, s, 2, he, w)
+        #preds = preds.view(b, s, 2, he, w)
 
         return preds, meta
         

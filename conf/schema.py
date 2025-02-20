@@ -19,6 +19,7 @@ class ConvLSTMConfig(BaseModel):
     kernel_size: int
     padding: int
     spatial: int
+    use_smoothing: bool
 
 class AutoencoderConfig(BaseModel):
     encoder_channels: List[int]
