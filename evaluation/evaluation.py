@@ -14,7 +14,7 @@ import scipy.stats as stats
 import seaborn as sns
 import yaml
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
-
+from tqdm import tqdm
 sys.path.append('../')
 import utils.mapping as mapping
 import utils.visualize as viz
@@ -930,7 +930,7 @@ def analyze_field_correlations(test_results, resub=False, sample_idx=0,
         
         # Compute correlation matrix between all pixel pairs
         correlation_matrix = np.zeros((n_pixels, n_pixels))
-        for i in range(n_pixels):
+        for i in tqdm(range(n_pixels), desc="Computing correlation matrix..."):
             for j in range(n_pixels):
                 correlation_matrix[i, j] = np.corrcoef(pixel_pairs[i], pixel_pairs[j])[0, 1]
         
