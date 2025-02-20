@@ -66,8 +66,8 @@ class RawDataLoader:
     
     def _load_data(self, wv_idx):
         if self.conf.model.arch == 'modelstm':
+            print(f"Loading data from datapath for wavelength: {wv_idx}...")
             datapath = self._get_datapath()
-            print(f"Loading data from datapath: {datapath}")
             data = torch.load(datapath, weights_only=True)
             data, P, mean_vec = preprocess_svd_data(data, self.conf)
             self.P = P
@@ -75,13 +75,13 @@ class RawDataLoader:
             return data
         else:
             # If multiple wavelengths are specified, combine them.
-            if isinstance(wv_idx, (list, tuple)) and len(wv_idx) > 1:
+            if len(wv_idx) > 1: #isinstance(wv_idx, (list, tuple)) and len(wv_idx) > 1:
                 data_combined = {'near_fields': [], 'phases': [], 
                                  'derivatives': [], 'radii': [], 
                                  'tag': [], 'wavelength': []}
                 for wv in tqdm(wv_idx, desc="Loading data...", ncols=80, file=sys.stderr, mininterval=1.0, dynamic_ncols=True):
+                    print(f"Loading data from datapath for wavelength: {wv}...")
                     datapath = self._get_datapath(wv)
-                    print(f"Loading data from datapath: {datapath}")
                     wv_data = torch.load(datapath, weights_only=True)
                     num_samples = wv_data['near_fields'].shape[0]
                     for key in wv_data.keys():
