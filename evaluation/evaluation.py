@@ -879,24 +879,54 @@ def analyze_field_correlations(test_results, resub=False, sample_idx=0,
             pred = pred.unsqueeze(0).unsqueeze(0)
         return ssim_metric(pred.float(), truth.float()).item()
     
-    def compute_correlation_matrix(truth, pred):
+    def downsample_field(field, target_size=30):
+        """
+        Downsample a field using spatial averaging
+        
+        Args:
+            field (np.ndarray): Input field of shape [H, W]
+            target_size (int): Desired size of output (will be target_size x target_size)
+        Returns:
+            np.ndarray: Downsampled field of shape [target_size, target_size]
+        """
+        h, w = field.shape
+        # Calculate pooling window size
+        pool_h = h // target_size
+        pool_w = w // target_size
+        
+        # Ensure we can evenly divide the image
+        new_h = target_size * pool_h
+        new_w = target_size * pool_w
+        
+        # Crop field to be divisible by pooling size
+        field = field[:new_h, :new_w]
+        
+        # Reshape and average
+        return field.reshape(target_size, pool_h, target_size, pool_w).mean(axis=(1,3))
+
+    def compute_correlation_matrix(truth, pred, target_size=30):
         """
         Compute pixel-wise correlation matrix between corresponding pixels in truth and prediction
         
         Args:
             truth (torch.Tensor): Ground truth field [H, W]
             pred (torch.Tensor): Predicted field [H, W]
+            target_size (int): Size to downsample to before computing correlations
         Returns:
-            np.ndarray: Pixel-wise correlation matrix [H*W, H*W]
+            np.ndarray: Pixel-wise correlation matrix [target_size*target_size, target_size*target_size]
         """
-        # Convert to numpy and flatten spatial dimensions
+        # Convert to numpy
         truth_np = truth.cpu().numpy()
         pred_np = pred.cpu().numpy()
-        h, w = truth_np.shape
-        n_pixels = h * w
+        
+        # Downsample both fields
+        truth_small = downsample_field(truth_np, target_size)
+        pred_small = downsample_field(pred_np, target_size)
+        
+        n_pixels = target_size * target_size
         
         # Reshape to [n_pixels, 2] where each row is [truth_pixel, pred_pixel]
-        pixel_pairs = np.column_stack((truth_np.flatten(), pred_np.flatten()))
+        pixel_pairs = np.column_stack((truth_small.flatten(), pred_small.flatten()))
         
         # Compute correlation matrix between all pixel pairs
         correlation_matrix = np.zeros((n_pixels, n_pixels))
