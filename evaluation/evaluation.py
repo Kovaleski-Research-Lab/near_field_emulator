@@ -925,6 +925,7 @@ def analyze_field_correlations(test_results, resub=False, sample_idx=0,
         pred = torch.from_numpy(results['nf_pred'][sample_idx]).to(device)
         
         if arch == 'mlp' or arch == 'cvnn' or arch == 'autoencoder':
+            # Single timestep case
             components = [
                 ('Real', truth[0], pred[0]),
                 ('Imaginary', truth[1], pred[1])
@@ -937,6 +938,7 @@ def analyze_field_correlations(test_results, resub=False, sample_idx=0,
                 print(f"{title} - {comp_name} Component SSIM: {ssim_score:.4f}")
                 
                 # Generate and save correlation plot
+                print(f"Computing correlation matrix for {comp_name} component...")
                 corr_matrix = compute_correlation_matrix(truth_comp, pred_comp)
                 plot_title = f"{title} - {comp_name} Component Correlation"
                 fig = plot_correlation_heatmap(corr_matrix, plot_title)
@@ -948,37 +950,33 @@ def analyze_field_correlations(test_results, resub=False, sample_idx=0,
                 plt.close(fig)
                 
         else:
-            # Sequential case
-            seq_len = truth.shape[0]
-            ssim_scores_real = []
-            ssim_scores_imag = []
+            # Sequential case - only analyze final timestep
+            final_idx = -1  # Get the last timestep
             
-            for t in range(seq_len):
-                ssim_real = compute_ssim(truth[t, 0], pred[t, 0])
-                ssim_imag = compute_ssim(truth[t, 1], pred[t, 1])
-                
-                ssim_scores_real.append(ssim_real)
-                ssim_scores_imag.append(ssim_imag)
-                
-                for comp_name, truth_comp, pred_comp in [
-                    ('Real', truth[t, 0], pred[t, 0]),
-                    ('Imaginary', truth[t, 1], pred[t, 1])
-                ]:
-                    corr_matrix = compute_correlation_matrix(truth_comp, pred_comp)
-                    plot_title = f"{title} - {comp_name} Component Correlation (t={t+1})"
-                    fig = plot_correlation_heatmap(corr_matrix, plot_title)
-                    
-                    if save_fig:
-                        save_eval_item(save_dir, fig,
-                                     f"correlation_{title}_{comp_name}_t{t+1}.pdf",
-                                     'misc')
-                    plt.close(fig)
+            # Calculate SSIM for final timestep
+            ssim_real = compute_ssim(truth[final_idx, 0], pred[final_idx, 0])
+            ssim_imag = compute_ssim(truth[final_idx, 1], pred[final_idx, 1])
             
-            # Save average SSIM scores
-            metrics_dict['Average_Real_SSIM'] = np.mean(ssim_scores_real)
-            metrics_dict['Average_Imag_SSIM'] = np.mean(ssim_scores_imag)
-            print(f"{title} - Average Real Component SSIM: {metrics_dict['Average_Real_SSIM']:.4f}")
-            print(f"{title} - Average Imaginary Component SSIM: {metrics_dict['Average_Imag_SSIM']:.4f}")
+            metrics_dict['Final_Real_SSIM'] = ssim_real
+            metrics_dict['Final_Imag_SSIM'] = ssim_imag
+            print(f"{title} - Final Real Component SSIM: {ssim_real:.4f}")
+            print(f"{title} - Final Imaginary Component SSIM: {ssim_imag:.4f}")
+            
+            # Compute correlation matrices for final timestep only
+            for comp_name, truth_comp, pred_comp in [
+                ('Real', truth[final_idx, 0], pred[final_idx, 0]),
+                ('Imaginary', truth[final_idx, 1], pred[final_idx, 1])
+            ]:
+                print(f"Computing correlation matrix for final {comp_name} component...")
+                corr_matrix = compute_correlation_matrix(truth_comp, pred_comp)
+                plot_title = f"{title} - Final {comp_name} Component Correlation"
+                fig = plot_correlation_heatmap(corr_matrix, plot_title)
+                
+                if save_fig:
+                    save_eval_item(save_dir, fig,
+                                 f"correlation_{title}_final_{comp_name}.pdf",
+                                 'misc')
+                plt.close(fig)
         
         # Save metrics
         if save_fig:

@@ -54,11 +54,12 @@ def plotting(conf, test_results, results_dir, fold_num=None):
     # determine model type
     model_type = conf.model.arch
     
-    print("\n Computing SSIM and Correlation Plots...")
-    eval.analyze_field_correlations(test_results, resub=True,save_fig=True, 
-                                    save_dir=plots_dir, arch=model_type, fold_num=fold_num)
-    eval.analyze_field_correlations(test_results, resub=False, save_fig=True, 
-                                    save_dir=plots_dir, arch=model_type, fold_num=fold_num)
+    if conf.trainier.plot_ssim_corr:
+        print("\n Computing SSIM and Correlation Plots...")
+        eval.analyze_field_correlations(test_results, resub=True,save_fig=True, 
+                                        save_dir=plots_dir, arch=model_type, fold_num=fold_num)
+        eval.analyze_field_correlations(test_results, resub=False, save_fig=True, 
+                                        save_dir=plots_dir, arch=model_type, fold_num=fold_num)
         
     # compute relevant metrics across folds
     if model_type != 'autoencoder':

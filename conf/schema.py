@@ -90,6 +90,7 @@ class TrainerConfig(BaseModel):
     patience: int = 15
     min_delta: float = 0.0001
     load_checkpoint: Dict[str, Any]
+    plot_ssim_corr: bool = False
     
 class PathsConfig(BaseModel):
     root: str

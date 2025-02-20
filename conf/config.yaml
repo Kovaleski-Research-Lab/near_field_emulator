@@ -201,6 +201,9 @@ trainer:
     patience: 10
     min_delta: 0.0001
 
+    # plot settings
+    plot_ssim_corr: True
+
 #--------------------------------
 #       All paths
 #--------------------------------
