@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 2
 deployment: 1
 
 
@@ -24,7 +24,7 @@ deployment: 1
 # - seed: random seed - often 1337
 
 
-seed: 42
+seed: 1337
 
 #--------------------------------
 #       Network Params
@@ -49,8 +49,8 @@ model:
         # - 9: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 2
-    model_id: '60-3-BASELINE'
+    arch: 3
+    model_id: 'net4A-BASELINE'
 
     # General Model Parameters
 
@@ -87,7 +87,7 @@ model:
         layers: [64, 512, 1024]
         activation: 'complexrelu'
 
-    mlp_strategy: 3
+    mlp_strategy: 0
     patch_size: 3
     num_design_conf: 9
     interpolate_fields: False
@@ -173,7 +173,7 @@ model:
     # - autoreg: autoregressive mode or teacher forcing - M2M only
 
     seq_len: 15
-    io_mode: 'one_to_many'
+    io_mode: 'many_to_many'
     spacing_mode: 'sequential'
     autoreg: True
 
@@ -212,8 +212,8 @@ paths:
     volumes: 'nfe-data/volumes'
     library: 'code/near_field_emulator/utils/neighbors_library_allrandom.pkl'
     pretrained_ae: 'autoencoder/model_ae-v1/'
-    pretrained_mlp: 'surrogate/model_sanity-test/mlp/'
-    pretrained_lstm: 'surrogate/model_sanity-test/lstm/'
+    pretrained_mlp: 'surrogate/model_BASELINE/mlp/'
+    pretrained_lstm: 'mlp/model_net2B-BASELINE/'
     mlp_results: 'mlp/model_BASELINE/'
 
 #--------------------------------
@@ -336,6 +336,6 @@ pipeline:
   - phase_name: "mlp"
     model_arch: "mlp"
     processor: "MLPProcessor"
-  - phase_name: "lstm"
-    model_arch: "lstm"
-    processor: "TemporalProcessor"
+  - phase_name: "mlp"
+    model_arch: "mlp"
+    processor: "MLPProcessor"

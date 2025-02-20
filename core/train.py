@@ -226,7 +226,7 @@ def train_phase(conf, data_module, phase_name, custom_processor=None, fold_idx=N
             shutil.copy(src_loss, dst_loss)
         return model_instance
         
-    if conf.trainer.load_checkpoint['lstm'] and conf.model.arch == 'lstm':
+    if conf.trainer.load_checkpoint['lstm'] and (conf.model.arch in ['lstm', 'convlstm', 'ae-convlstm']):
         model_path = os.path.join(conf.paths.pretrained_lstm, 'model.ckpt')
         model_instance.load_state_dict(torch.load(model_path)['state_dict'])
         print(f"Loaded LSTM checkpoint from {model_path}")

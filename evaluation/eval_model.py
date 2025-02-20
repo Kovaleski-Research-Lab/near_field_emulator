@@ -145,38 +145,42 @@ def pipeline_eval(conf, data_module, trained_models):
     print(f"Evaluating MLP")
     
     # First evaluate MLP with MLP processor
-    mlp_model = trained_models['mlp']
-    mlp_processor = MLPProcessor()
-    data_module.processor = mlp_processor
+    phase1_name = conf.pipeline[0].phase_name
+    phase1_model = trained_models[phase1_name]
+    processor1 = conf.pipeline[0].processor
+    data_module.processor = MLPProcessor() if processor1 == 'MLPProcessor' else TemporalProcessor()
     data_module.setup(stage='test')
     # print dataset near fields size
     
     conf_copy = conf.copy()
-    conf_copy.model.arch = 'mlp'
-    mlp_results = evaluate_model(mlp_model, data_module, conf_copy, 'mlp')
+    conf_copy.model.arch = conf.pipeline[0].model_arch
+    phase1_results = evaluate_model(phase1_model, data_module, conf_copy, conf.pipeline[0].model_arch)
     
-    # call the plotting handler for MLP
-    plotting(conf, mlp_results, os.path.join(results_dir, 'mlp'))
+    # call the plotting handler for phase1 model
+    plotting(conf, phase1_results, os.path.join(results_dir, conf.pipeline[0].model_arch))
     
     print(f"Evaluating Time-Series Model")
     
-    # Convert MLP results to tensor format for LSTM input
-    mlp_preds = {
-        'train': torch.from_numpy(mlp_results['train']['nf_pred']),
-        'valid': torch.from_numpy(mlp_results['valid']['nf_pred'])
+    # Convert results to tensor format for insertion into phase2's valid data
+    phase1_preds = {
+        'train': torch.from_numpy(phase1_results['train']['nf_pred']),
+        'valid': torch.from_numpy(phase1_results['valid']['nf_pred'])
     }
     
-    # Then evaluate LSTM with temporal processor
-    lstm_model = trained_models['lstm']
-    temporal_processor = TemporalProcessor()
-    data_module.processor = temporal_processor
+    # Then evaluate phase2 model
+    phase2_name = conf.pipeline[1].phase_name
+    phase2_model = trained_models[phase2_name]
+    processor2 = conf.pipeline[1].processor
+    data_module.processor = TemporalProcessor() if processor2 == 'TemporalProcessor' else MLPProcessor()
     # Update the datamodule's data with MLP predictions
-    data_module.update_near_fields(mlp_preds)
-    conf_copy.model.arch = 'lstm'
-    lstm_results = evaluate_model(lstm_model, data_module, conf_copy, 'lstm')
+    data_module.update_near_fields(phase1_preds, phase1_name)
+    conf_copy.model.arch = conf.pipeline[1].model_arch
+    if conf.pipeline[0].model_arch == conf.pipeline[1].model_arch == 'mlp':
+        conf_copy.model.mlp_strategy = 3 # doubled up MLP's mean's network 2, which means mlp_strategy = 3
+    phase2_results = evaluate_model(phase2_model, data_module, conf_copy, conf.pipeline[1].model_arch)
     
     # call the plotting handler for LSTM
-    plotting(conf, lstm_results, os.path.join(results_dir, 'lstm'))
+    plotting(conf, phase2_results, os.path.join(results_dir, conf.pipeline[1].model_arch))
 
 def single_model_eval(conf, data_module=None):
     # use current config to get results directory

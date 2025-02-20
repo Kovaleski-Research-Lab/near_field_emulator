@@ -621,7 +621,8 @@ def plot_dft_fields(test_results, resub=False,
     plot_single_set(test_results['valid'], f"{title} - Random Validation Sample - {format}", format, save_dir, sample_idx)
     
 def plot_absolute_difference(test_results, resub=False, sample_idx=0, 
-                             save_fig=False, save_dir=None, arch='mlp', fold_num=None):
+                             save_fig=False, save_dir=None, arch='mlp', 
+                             fold_num=None, fixed_scale=False):
     """
     Plot a sequence of absolute difference between predicted and ground truth fields
     
@@ -633,10 +634,19 @@ def plot_absolute_difference(test_results, resub=False, sample_idx=0,
         save_dir (str): Directory to save figure if save_fig is True
         arch (str): Architecture type ('mlp' or 'lstm')
         fold_num: the fold # of the selected fold being plotted (if cross val)
+        fixed_scale (bool): Whether to use a fixed color scale for all plots
 
     """
     def plot_single_set(results, title, sample_idx):
         abs_diff = calculate_absolute_difference(results, sample_idx)
+        
+        # If fixed_scale is True, calculate the max value from original data
+        if fixed_scale:
+            truth = results['nf_truth'][sample_idx]
+            vmax = np.abs(truth).max()
+            vmin = 0  # for absolute difference, minimum is always 0
+        else:
+            vmin = vmax = None
         
         if arch == 'mlp' or arch == 'cvnn' or arch == 'autoencoder':
             # Extract real and imaginary differences
@@ -651,12 +661,12 @@ def plot_absolute_difference(test_results, resub=False, sample_idx=0,
             fig.suptitle(title, fontsize=16)
             
             # Plot magnitude difference
-            im_mag = ax[0].imshow(real_diff, cmap='magma')
+            im_mag = ax[0].imshow(real_diff, cmap='magma', vmin=vmin, vmax=vmax)
             ax[0].set_title('Real Difference')
             ax[0].axis('off')
             
             # Plot phase difference
-            im_phase = ax[1].imshow(imag_diff, cmap='magma')
+            im_phase = ax[1].imshow(imag_diff, cmap='magma', vmin=vmin, vmax=vmax)
             ax[1].set_title('Imaginary Difference')
             ax[1].axis('off')
             
@@ -685,11 +695,11 @@ def plot_absolute_difference(test_results, resub=False, sample_idx=0,
             fig.suptitle(title, fontsize=16)
             
             for t in range(seq_len):
-                im_mag = axs_top[t].imshow(mag_diff[t], cmap='magma')
+                im_mag = axs_top[t].imshow(mag_diff[t], cmap='magma', vmin=vmin, vmax=vmax)
                 axs_top[t].axis('off')
                 axs_top[t].set_title(f't={t+1}')
                 
-                im_phase = axs_bottom[t].imshow(phase_diff[t], cmap='magma')
+                im_phase = axs_bottom[t].imshow(phase_diff[t], cmap='magma', vmin=vmin, vmax=vmax)
                 axs_bottom[t].axis('off')
             
             # Add single colorbar at the bottom

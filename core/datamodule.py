@@ -237,14 +237,17 @@ class NFDataModule(LightningDataModule):
             wv = str(self.wv_dict[wv_idx]).replace('.', '')
             return os.path.join(self.path_data, 'preprocessed_data', f'dataset_{wv}.pt')
         
-    def update_near_fields(self, mlp_predictions):
-        """Update the near fields with MLP predictions for pipeline evaluation"""
+    def update_near_fields(self, predictions, phase_name):
+        """Update the near fields with predictions of step1 for pipeline evaluation"""
         # Get raw data from the loader
         raw_data = self.raw_loader.load('test')
         
+        # updating initial field if we first did an MLP, otherwise update the last field
+        index = 0 if phase_name == 'mlp' else -1
+        
         # Update the near fields with MLP predictions only for validation set
         # Note: We're updating channel 0 of the time dimension (initial condition)
-        raw_data['near_fields'][self.index_map['valid'], :, :, :, 0] = mlp_predictions['valid']
+        raw_data['near_fields'][self.index_map['valid'], :, :, :, index] = predictions['valid']
             
         # Reprocess the data with updated near fields
         self.dataset = self.processor.process(raw_data, self.conf)

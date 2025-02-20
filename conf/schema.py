@@ -222,7 +222,7 @@ class PipelineConfig(BaseModel):
 
     @field_validator('model_arch', mode='before')
     def validate_model_arch(cls, value):
-        valid_archs = ['mlp', 'lstm', 'convlstm', 'modelstm', 'cvnn']
+        valid_archs = ['mlp', 'lstm', 'convlstm', 'modelstm', 'ae-convlstm']
         if value not in valid_archs:
             raise ValueError(f"Model architecture must be one of {valid_archs}")
         return value
