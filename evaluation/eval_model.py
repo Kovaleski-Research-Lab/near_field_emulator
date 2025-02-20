@@ -45,13 +45,20 @@ def plotting(conf, test_results, results_dir, fold_num=None):
     metrics_dir = os.path.join(plots_dir, "performance_metrics")
     dft_dir = os.path.join(plots_dir, "dft_plots")
     flipbook_dir = os.path.join(plots_dir, "flipbooks")
+    misc_dir = os.path.join(plots_dir, "misc_plots")
     
-    for directory in [metrics_dir, dft_dir, flipbook_dir]:
+    for directory in [metrics_dir, dft_dir, flipbook_dir, misc_dir]:
         os.makedirs(directory, exist_ok=True)
         print(f"Created directory: {directory}")
 
     # determine model type
     model_type = conf.model.arch
+    
+    print("\n Computing SSIM and Correlation Plots...")
+    eval.analyze_field_correlations(test_results, resub=True,save_fig=True, 
+                                    save_dir=plots_dir, arch=model_type, fold_num=fold_num)
+    eval.analyze_field_correlations(test_results, resub=False, save_fig=True, 
+                                    save_dir=plots_dir, arch=model_type, fold_num=fold_num)
         
     # compute relevant metrics across folds
     if model_type != 'autoencoder':

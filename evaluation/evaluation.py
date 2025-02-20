@@ -11,6 +11,7 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.colors import LogNorm
 import matplotlib.cm as cm
 import scipy.stats as stats
+import seaborn as sns
 import yaml
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 
@@ -82,17 +83,29 @@ def get_all_results(folder_path, n_folds, resub=False):
     return fold_results
         
 def save_eval_item(save_dir, eval_item, file_name, type):
-    """Save metrics or plot(s) to a specified file."""
+    """
+    Save metrics or plot(s) to a specified file.
+    
+    Args:
+        save_dir (str): Base directory for saving results
+        eval_item (dict/figure): Item to save (metrics dict or matplotlib figure)
+        file_name (str): Name of the file to save
+        type (str): Type of evaluation item ('metrics', 'loss', 'dft', 'misc', etc.)
+    """
     if 'metrics' in type or type == 'evo':
         save_path = os.path.join(save_dir, "performance_metrics")
     elif type == 'loss':
         save_path = os.path.join(save_dir, "loss_plots")
     elif type == 'dft':
         save_path = os.path.join(save_dir, "dft_plots")
+    elif type == 'misc':
+        save_path = os.path.join(save_dir, "misc_plots")
     else:
         return NotADirectoryError
-    #os.makedirs(save_path, exist_ok=True)
+    
+    os.makedirs(save_path, exist_ok=True)
     save_path = os.path.join(save_path, file_name)
+    
     std_metrics = ["RMSE_First_Slice", "RMSE_Final_Slice"]
     if 'metrics' in type:
         with open(save_path, 'w') as file:
@@ -836,3 +849,152 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     construct_results_table(args.model_names, args.model_types)
+    
+def analyze_field_correlations(test_results, resub=False, sample_idx=0, 
+                             save_fig=False, save_dir=None, arch='mlp', 
+                             fold_num=None, device='cuda'):
+    """
+    Analyze field predictions using SSIM and correlation matrices
+    
+    Args:
+        test_results (dict): Dictionary containing train and valid results
+        resub (bool): Whether to analyze training data instead of validation
+        sample_idx (int): Index of sample to analyze
+        save_fig (bool): Whether to save the figures
+        save_dir (str): Directory to save figures if save_fig is True
+        arch (str): Architecture type ('mlp', 'lstm', 'convlstm', etc.)
+        fold_num (int): Fold number if using cross-validation
+        device (str): Device to run computations on ('cuda' or 'cpu')
+    """
+    import seaborn as sns
+    from torchmetrics.image import StructuralSimilarityIndexMeasure
+    
+    # Initialize SSIM metric
+    ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+    
+    def compute_ssim(truth, pred):
+        """Compute SSIM using torchmetrics"""
+        if truth.dim() == 2:
+            truth = truth.unsqueeze(0).unsqueeze(0)
+            pred = pred.unsqueeze(0).unsqueeze(0)
+        return ssim_metric(pred.float(), truth.float()).item()
+    
+    def compute_correlation_matrix(truth, pred):
+        """
+        Compute pixel-wise correlation matrix between corresponding pixels in truth and prediction
+        
+        Args:
+            truth (torch.Tensor): Ground truth field [H, W]
+            pred (torch.Tensor): Predicted field [H, W]
+        Returns:
+            np.ndarray: Pixel-wise correlation matrix [H*W, H*W]
+        """
+        # Convert to numpy and flatten spatial dimensions
+        truth_np = truth.cpu().numpy()
+        pred_np = pred.cpu().numpy()
+        h, w = truth_np.shape
+        n_pixels = h * w
+        
+        # Reshape to [n_pixels, 2] where each row is [truth_pixel, pred_pixel]
+        pixel_pairs = np.column_stack((truth_np.flatten(), pred_np.flatten()))
+        
+        # Compute correlation matrix between all pixel pairs
+        correlation_matrix = np.zeros((n_pixels, n_pixels))
+        for i in range(n_pixels):
+            for j in range(n_pixels):
+                correlation_matrix[i, j] = np.corrcoef(pixel_pairs[i], pixel_pairs[j])[0, 1]
+        
+        return correlation_matrix
+    
+    def plot_correlation_heatmap(corr_matrix, title):
+        """Plot correlation matrix as heatmap"""
+        fig = plt.figure(figsize=(12, 10))
+        sns.heatmap(corr_matrix, annot=False, cmap='coolwarm', center=0, 
+                    xticklabels=False, yticklabels=False)
+        plt.title(title)
+        plt.xlabel('Pixel Index')
+        plt.ylabel('Pixel Index')
+        return fig
+    
+    def analyze_single_set(results, title):
+        # Store SSIM scores for saving to metrics file
+        metrics_dict = {}
+        
+        # Extract truth and predictions and move to device
+        truth = torch.from_numpy(results['nf_truth'][sample_idx]).to(device)
+        pred = torch.from_numpy(results['nf_pred'][sample_idx]).to(device)
+        
+        if arch == 'mlp' or arch == 'cvnn' or arch == 'autoencoder':
+            components = [
+                ('Real', truth[0], pred[0]),
+                ('Imaginary', truth[1], pred[1])
+            ]
+            
+            for comp_name, truth_comp, pred_comp in components:
+                # Calculate SSIM
+                ssim_score = compute_ssim(truth_comp, pred_comp)
+                metrics_dict[f'{comp_name}_SSIM'] = ssim_score
+                print(f"{title} - {comp_name} Component SSIM: {ssim_score:.4f}")
+                
+                # Generate and save correlation plot
+                corr_matrix = compute_correlation_matrix(truth_comp, pred_comp)
+                plot_title = f"{title} - {comp_name} Component Correlation"
+                fig = plot_correlation_heatmap(corr_matrix, plot_title)
+                
+                if save_fig:
+                    save_eval_item(save_dir, fig, 
+                                 f"correlation_{title}_{comp_name}.pdf", 
+                                 'misc')
+                plt.close(fig)
+                
+        else:
+            # Sequential case
+            seq_len = truth.shape[0]
+            ssim_scores_real = []
+            ssim_scores_imag = []
+            
+            for t in range(seq_len):
+                ssim_real = compute_ssim(truth[t, 0], pred[t, 0])
+                ssim_imag = compute_ssim(truth[t, 1], pred[t, 1])
+                
+                ssim_scores_real.append(ssim_real)
+                ssim_scores_imag.append(ssim_imag)
+                
+                for comp_name, truth_comp, pred_comp in [
+                    ('Real', truth[t, 0], pred[t, 0]),
+                    ('Imaginary', truth[t, 1], pred[t, 1])
+                ]:
+                    corr_matrix = compute_correlation_matrix(truth_comp, pred_comp)
+                    plot_title = f"{title} - {comp_name} Component Correlation (t={t+1})"
+                    fig = plot_correlation_heatmap(corr_matrix, plot_title)
+                    
+                    if save_fig:
+                        save_eval_item(save_dir, fig,
+                                     f"correlation_{title}_{comp_name}_t{t+1}.pdf",
+                                     'misc')
+                    plt.close(fig)
+            
+            # Save average SSIM scores
+            metrics_dict['Average_Real_SSIM'] = np.mean(ssim_scores_real)
+            metrics_dict['Average_Imag_SSIM'] = np.mean(ssim_scores_imag)
+            print(f"{title} - Average Real Component SSIM: {metrics_dict['Average_Real_SSIM']:.4f}")
+            print(f"{title} - Average Imaginary Component SSIM: {metrics_dict['Average_Imag_SSIM']:.4f}")
+        
+        # Save metrics
+        if save_fig:
+            save_eval_item(save_dir, metrics_dict, 
+                          f"ssim_metrics_{title}.txt", 
+                          'metrics')
+    
+    # Set up title based on fold number
+    if fold_num:
+        base_title = f'Cross_Val_Fold_{fold_num}'
+    else:
+        base_title = 'Default_Split'
+    
+    # Analyze validation data
+    analyze_single_set(test_results['valid'], f"{base_title}_Validation")
+    
+    # Analyze training data if requested
+    if resub:
+        analyze_single_set(test_results['train'], f"{base_title}_Training")
