@@ -67,6 +67,9 @@ def plotting(conf, test_results, results_dir, fold_num=None):
         print("\nComputing and saving metrics...")
         eval.metrics(test_results, dataset='train', save_fig=True, save_dir=plots_dir, plot_mse=plot_mse)
         eval.metrics(test_results, dataset='valid', save_fig=True, save_dir=plots_dir, plot_mse=plot_mse)
+        # compute SSIM #TODO combine this with the above
+        eval.compute_field_ssim(test_results, resub=True, save_fig=True, save_dir=plots_dir, arch=model_type)
+        eval.compute_field_ssim(test_results, resub=False, save_fig=True, save_dir=plots_dir, arch=model_type)
     
     # visualize performance with DFT fields
     print("\nGenerating DFT field plots...")

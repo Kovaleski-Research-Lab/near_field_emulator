@@ -168,21 +168,119 @@ class WaveModel(LightningModule, metaclass=abc.ABCMeta):
     
     def training_step(self, batch, batch_idx):
         """
-        Common training step likely shared among all subclasses
+        Common training step shared among all subclasses
         """
         loss, preds = self.shared_step(batch, batch_idx)
         
         self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
         
+        # For sequential models, we need to handle multiple timesteps
+        if isinstance(batch, list):
+            # Get the ground truth sequence
+            truth = batch[1]  # This should be your target sequence
+            
+            # Compute PSNR/SSIM for each timestep and average
+            psnr_vals = []
+            ssim_vals = []
+            
+            # Ensure predictions and truth have same number of timesteps
+            for t in range(min(preds.shape[1], truth.shape[1])):
+                pred_t = preds[:, t]  # [B, 2, H, W]
+                truth_t = truth[:, t]  # [B, 2, H, W]
+                
+                # Handle real and imaginary components separately
+                for comp in range(2):
+                    pred_comp = pred_t[:, comp].unsqueeze(1)  # [B, 1, H, W]
+                    truth_comp = truth_t[:, comp].unsqueeze(1)  # [B, 1, H, W]
+                    
+                    # Compute metrics for this component and timestep
+                    psnr_t = self.train_psnr(pred_comp.float(), truth_comp.float())
+                    ssim_t = self.train_ssim(pred_comp.float(), truth_comp.float())
+                    
+                    psnr_vals.append(psnr_t)
+                    ssim_vals.append(ssim_t)
+            
+            # Average metrics across timesteps and components
+            psnr = torch.stack(psnr_vals).mean()
+            ssim = torch.stack(ssim_vals).mean()
+            
+        else:
+            # Non-sequential case
+            psnr_vals = []
+            ssim_vals = []
+            
+            # Handle real and imaginary components separately
+            for comp in range(2):
+                pred_comp = preds[:, comp].unsqueeze(1)  # [B, 1, H, W]
+                batch_comp = batch[:, comp].unsqueeze(1)  # [B, 1, H, W]
+                
+                psnr_vals.append(self.train_psnr(pred_comp.float(), batch_comp.float()))
+                ssim_vals.append(self.train_ssim(pred_comp.float(), batch_comp.float()))
+            
+            psnr = torch.stack(psnr_vals).mean()
+            ssim = torch.stack(ssim_vals).mean()
+        
+        self.log("train_psnr", psnr, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("train_ssim", ssim, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        
         return {'loss': loss, 'output': preds, 'target': batch}
     
     def validation_step(self, batch, batch_idx):
         """
-        Common training step likely shared among all subclasses
+        Common validation step shared among all subclasses
         """
         loss, preds = self.shared_step(batch, batch_idx)
         
         self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        
+        # For sequential models, we need to handle multiple timesteps
+        if isinstance(batch, list):
+            # Get the ground truth sequence
+            truth = batch[1]  # This should be your target sequence
+            
+            # Compute PSNR/SSIM for each timestep and average
+            psnr_vals = []
+            ssim_vals = []
+            
+            # Ensure predictions and truth have same number of timesteps
+            for t in range(min(preds.shape[1], truth.shape[1])):
+                pred_t = preds[:, t]  # [B, 2, H, W]
+                truth_t = truth[:, t]  # [B, 2, H, W]
+                
+                # Handle real and imaginary components separately
+                for comp in range(2):
+                    pred_comp = pred_t[:, comp].unsqueeze(1)  # [B, 1, H, W]
+                    truth_comp = truth_t[:, comp].unsqueeze(1)  # [B, 1, H, W]
+                    
+                    # Compute metrics for this component and timestep
+                    psnr_t = self.val_psnr(pred_comp.float(), truth_comp.float())
+                    ssim_t = self.val_ssim(pred_comp.float(), truth_comp.float())
+                    
+                    psnr_vals.append(psnr_t)
+                    ssim_vals.append(ssim_t)
+            
+            # Average metrics across timesteps and components
+            psnr = torch.stack(psnr_vals).mean()
+            ssim = torch.stack(ssim_vals).mean()
+            
+        else:
+            # Non-sequential case
+            psnr_vals = []
+            ssim_vals = []
+            
+            # Handle real and imaginary components separately
+            for comp in range(2):
+                pred_comp = preds[:, comp].unsqueeze(1)  # [B, 1, H, W]
+                batch_comp = batch[:, comp].unsqueeze(1)  # [B, 1, H, W]
+                
+                psnr_vals.append(self.val_psnr(pred_comp.float(), batch_comp.float()))
+                ssim_vals.append(self.val_ssim(pred_comp.float(), batch_comp.float()))
+            
+            psnr = torch.stack(psnr_vals).mean()
+            ssim = torch.stack(ssim_vals).mean()
+        
+        self.log("val_psnr", psnr, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("val_ssim", ssim, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
         
         return {'loss': loss, 'output': preds, 'target': batch}
     

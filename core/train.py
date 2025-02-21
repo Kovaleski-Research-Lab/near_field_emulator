@@ -16,6 +16,7 @@ from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, EarlyStopping, Callback
 from pytorch_lightning.callbacks.progress.tqdm_progress import Tqdm
 from pytorch_lightning.plugins.environments import SLURMEnvironment
+from pytorch_lightning.loggers import TensorBoardLogger
 from tqdm.auto import tqdm
 
 #--------------------------------
@@ -126,8 +127,15 @@ class CustomEarlyStopping(Callback):
            
 def configure_trainer(conf, logger, checkpoint_callback, early_stopping, progress_bar):
     """Create and return a configured Trainer instance."""
+    tensorboard_logger = TensorBoardLogger(
+        save_dir=conf.paths.results,
+        name='',  # Empty name to avoid extra subdirectory
+        version='',  # Empty version to avoid extra subdirectory
+        default_hp_metric=False  # Disable default hp_metric logging
+    )
+    
     trainer_kwargs = {
-        'logger': logger,
+        'logger': tensorboard_logger,
         'max_epochs': conf.trainer.num_epochs,
         'deterministic': True,
         'enable_progress_bar': True,
@@ -243,10 +251,9 @@ def train_phase(conf, data_module, phase_name, custom_processor=None, fold_idx=N
         version=0
     )
 
-    filename = 'model'
     checkpoint_callback = ModelCheckpoint(
         dirpath=save_dir,
-        filename=filename,
+        filename=f'model',
         save_top_k=1,
         monitor='val_loss',
         mode='min' if conf.model.objective_function == 'mse' else 'max',
