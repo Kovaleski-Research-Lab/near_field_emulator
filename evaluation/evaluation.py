@@ -1,6 +1,7 @@
 import pickle
 import sys
 import os
+import matplotlib
 import torch
 import numpy as np
 import pandas as pd
@@ -923,177 +924,159 @@ def analyze_field_correlations(test_results, resub=False, sample_idx=0,
                              save_fig=False, save_dir=None, arch='mlp', 
                              fold_num=None, device='cuda'):
     """
-    Analyze field predictions using correlation matrices
-    [... rest of docstring ...]
+    Create scatter plots comparing ground truth vs predicted values to visualize correlation,
+    averaged across all test samples
     """
-    # [Previous correlation matrix code remains the same, but with SSIM parts removed]
-    # [Keep the downsampling and correlation matrix computation parts]
-    
-    def compute_correlation_matrix(truth, pred, target_size=30):
-        """[... same as before ...]"""
-        pass
-    
-    def plot_correlation_heatmap(corr_matrix, title):
-        """[... same as before ...]"""
-        pass
-    
-    def analyze_single_set(results, title):
-        # Extract truth and predictions and move to device
-        truth = torch.from_numpy(results['nf_truth'][sample_idx]).to(device)
-        pred = torch.from_numpy(results['nf_pred'][sample_idx]).to(device)
+    def create_correlation_plot(all_truth_real, all_pred_real, all_truth_imag, all_pred_imag, title):
+        # Flatten and concatenate all samples
+        truth_real_flat = np.concatenate([t.cpu().numpy().flatten() for t in all_truth_real])
+        pred_real_flat = np.concatenate([p.cpu().numpy().flatten() for p in all_pred_real])
+        truth_imag_flat = np.concatenate([t.cpu().numpy().flatten() for t in all_truth_imag])
+        pred_imag_flat = np.concatenate([p.cpu().numpy().flatten() for p in all_pred_imag])
         
-        if arch == 'mlp' or arch == 'cvnn' or arch == 'autoencoder':
-            components = [
-                ('Real', truth[0], pred[0]),
-                ('Imaginary', truth[1], pred[1])
-            ]
+        # Compute correlations
+        corr_real = np.corrcoef(truth_real_flat, pred_real_flat)[0, 1]
+        corr_imag = np.corrcoef(truth_imag_flat, pred_imag_flat)[0, 1]
+        
+        # Create figure with two subplots
+        fig = plt.figure(figsize=(20, 8))
+        
+        # 1. Combined density scatter plot
+        ax1 = plt.subplot(121)
+        
+        # Plot real and imaginary components with different colors
+        hist2d_real = plt.hist2d(truth_real_flat, pred_real_flat, bins=100,
+                                cmap='Reds', norm=matplotlib.colors.LogNorm(),
+                                alpha=0.6)
+        hist2d_imag = plt.hist2d(truth_imag_flat, pred_imag_flat, bins=100,
+                                cmap='Blues', norm=matplotlib.colors.LogNorm(),
+                                alpha=0.6)
+        
+        # Add diagonal line
+        min_val = min(truth_real_flat.min(), truth_imag_flat.min(),
+                     pred_real_flat.min(), pred_imag_flat.min())
+        max_val = max(truth_real_flat.max(), truth_imag_flat.max(),
+                     pred_real_flat.max(), pred_imag_flat.max())
+        plt.plot([min_val, max_val], [min_val, max_val], 'k--')
+        
+        plt.xlabel('Ground Truth Field Value')
+        plt.ylabel('Predicted Field Value')
+        plt.title(f'{title}\nReal (r={corr_real:.4f}) & Imaginary (r={corr_imag:.4f})\nAveraged across {len(all_truth_real)} samples')
+        
+        # Custom legend
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor='red', alpha=0.6, label='Real Component'),
+            Patch(facecolor='blue', alpha=0.6, label='Imaginary Component'),
+            plt.Line2D([0], [0], color='k', linestyle='--', label='Perfect Correlation')
+        ]
+        plt.legend(handles=legend_elements)
+        plt.axis('square')
+        
+        # 2. Combined distribution plot
+        ax2 = plt.subplot(122)
+        
+        # Calculate number of samples for averaging
+        n_samples = len(all_truth_real)
+        
+        # Create histograms with both density and counts
+        counts_real, bins, _ = plt.hist(truth_real_flat, bins=100, alpha=0.3, 
+                                    color='red', label='Ground Truth (Real)', density=True)
+        plt.hist(pred_real_flat, bins=bins, alpha=0.3, 
+                color='darkred', label='Prediction (Real)', density=True)
+        
+        counts_imag, bins, _ = plt.hist(truth_imag_flat, bins=100, alpha=0.3, 
+                                    color='blue', label='Ground Truth (Imag)', density=True)
+        plt.hist(pred_imag_flat, bins=bins, alpha=0.3, 
+                color='darkblue', label='Prediction (Imag)', density=True)
+        
+        plt.xlabel('Field Value')
+        plt.ylabel('Density')
+        
+        # Add second y-axis with average counts per sample
+        ax2_counts = ax2.twinx()
+        bin_width = bins[1] - bins[0]
+        max_count = max(
+            max(counts_real) * len(truth_real_flat) * bin_width / n_samples,
+            max(counts_imag) * len(truth_imag_flat) * bin_width / n_samples
+        )
+        ax2_counts.set_ylim(0, max_count)
+        ax2_counts.set_ylabel('Average Pixel Count per Sample')
+        
+        plt.title(f'Distribution of Field Values\nReal & Imaginary Components\nAveraged across {n_samples} samples')
+        ax2.legend()
             
-            for comp_name, truth_comp, pred_comp in components:
-                print(f"Computing correlation matrix for {comp_name} component...")
-                corr_matrix = compute_correlation_matrix(truth_comp, pred_comp)
-                plot_title = f"{title} - {comp_name} Component Correlation"
-                fig = plot_correlation_heatmap(corr_matrix, plot_title)
-                
-                if save_fig:
-                    save_eval_item(save_dir, fig, 
-                                 f"correlation_{title}_{comp_name}.pdf", 
-                                 'misc')
-                plt.close(fig)
-                
-        else:
-            # Sequential case - only analyze final timestep
-            final_idx = -1
+        # Calculate statistics
+        stats_text = (
+            'Real Component:\n'
+            f'    Mean (Truth/Pred): {truth_real_flat.mean():.3f}/{pred_real_flat.mean():.3f}\n'
+            f'    Std (Truth/Pred):  {truth_real_flat.std():.3f}/{pred_real_flat.std():.3f}\n'
+            f'    MAE: {np.mean(np.abs(truth_real_flat - pred_real_flat)):.3f}\n'
+            f'    RMSE: {np.sqrt(np.mean((truth_real_flat - pred_real_flat)**2)):.3f}\n'
+            '\nImaginary Component:\n'
+            f'    Mean (Truth/Pred): {truth_imag_flat.mean():.3f}/{pred_imag_flat.mean():.3f}\n'
+            f'    Std (Truth/Pred):  {truth_imag_flat.std():.3f}/{pred_imag_flat.std():.3f}\n'
+            f'    MAE: {np.mean(np.abs(truth_imag_flat - pred_imag_flat)):.3f}\n'
+            f'    RMSE: {np.sqrt(np.mean((truth_imag_flat - pred_imag_flat)**2)):.3f}'
+        )
+        
+        plt.text(0.05, 0.95, stats_text, 
+                transform=ax2.transAxes,
+                verticalalignment='top', 
+                fontfamily='monospace',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, pad=1),
+                fontsize=10)
+        
+        plt.tight_layout()
+        return fig
+
+    def analyze_single_set(results, title):
+        # Get all samples
+        truth = torch.from_numpy(results['nf_truth']).to(device)
+        pred = torch.from_numpy(results['nf_pred']).to(device)
+        
+        # Lists to store components from all samples
+        all_truth_real = []
+        all_pred_real = []
+        all_truth_imag = []
+        all_pred_imag = []
+        
+        # For each sample
+        for idx in range(len(truth)):
+            if arch == 'mlp' or arch == 'cvnn' or arch == 'autoencoder':
+                # Single timestep case
+                truth_real, truth_imag = truth[idx, 0], truth[idx, 1]
+                pred_real, pred_imag = pred[idx, 0], pred[idx, 1]
+            else:
+                # Sequential case - only analyze final timestep
+                truth_real, truth_imag = truth[idx, -1, 0], truth[idx, -1, 1]
+                pred_real, pred_imag = pred[idx, -1, 0], pred[idx, -1, 1]
             
-            for comp_name, truth_comp, pred_comp in [
-                ('Real', truth[final_idx, 0], pred[final_idx, 0]),
-                ('Imaginary', truth[final_idx, 1], pred[final_idx, 1])
-            ]:
-                print(f"Computing correlation matrix for final {comp_name} component...")
-                corr_matrix = compute_correlation_matrix(truth_comp, pred_comp)
-                plot_title = f"{title} - Final {comp_name} Component Correlation"
-                fig = plot_correlation_heatmap(corr_matrix, plot_title)
-                
-                if save_fig:
-                    save_eval_item(save_dir, fig,
-                                 f"correlation_{title}_final_{comp_name}.pdf",
-                                 'misc')
-                plt.close(fig)
+            all_truth_real.append(truth_real)
+            all_pred_real.append(pred_real)
+            all_truth_imag.append(truth_imag)
+            all_pred_imag.append(pred_imag)
+        
+        fig = create_correlation_plot(all_truth_real, all_pred_real, 
+                                    all_truth_imag, all_pred_imag, title)
+        
+        if save_fig:
+            save_eval_item(save_dir, fig, f"correlation_{title}.pdf", 'misc')
+            plt.close(fig)
     
     # Set up title based on fold number
     if fold_num:
         base_title = f'Cross_Val_Fold_{fold_num}'
     else:
-        base_title = 'Default_Split'
+        base_title = 'Default Split'
+    
     
     # Analyze training data if requested
     if resub:
-        analyze_single_set(test_results['train'], f"{base_title}_Training")
+        analyze_single_set(test_results['train'], f"{base_title} Training")
     else:
-        analyze_single_set(test_results['train'], f"{base_title}_Training")
+        analyze_single_set(test_results['valid'], f"{base_title} Validation")
 
-def analyze_field_correlations(test_results, resub=False, sample_idx=0, 
-                             save_fig=False, save_dir=None, arch='mlp', 
-                             fold_num=None, device='cuda'):
-    """
-    Create scatter plots comparing ground truth vs predicted values to visualize correlation
-    
-    Args:
-        test_results (dict): Dictionary containing train and valid results
-        resub (bool): Whether to analyze training data instead of validation
-        sample_idx (int): Index of sample to analyze
-        save_fig (bool): Whether to save the figures
-        save_dir (str): Directory to save figures if save_fig is True
-        arch (str): Architecture type ('mlp', 'lstm', 'convlstm', etc.)
-        fold_num (int): Fold number if using cross-validation
-        device (str): Device to run computations on ('cuda' or 'cpu')
-    """
-    def create_correlation_plot(truth, pred, component_name, title):
-        """
-        Create scatter plot of predicted vs ground truth values
-        
-        Args:
-            truth (torch.Tensor): Flattened ground truth values
-            pred (torch.Tensor): Flattened predicted values
-            component_name (str): Name of component (Real/Imaginary)
-            title (str): Plot title
-        """
-        # Convert to numpy and flatten
-        truth_flat = truth.cpu().numpy().flatten()
-        pred_flat = pred.cpu().numpy().flatten()
-        
-        # Compute correlation coefficient
-        correlation = np.corrcoef(truth_flat, pred_flat)[0, 1]
-        
-        # Create scatter plot
-        plt.figure(figsize=(10, 10))
-        plt.scatter(truth_flat, pred_flat, alpha=0.1, s=1)
-        
-        # Add diagonal line for reference
-        min_val = min(truth_flat.min(), pred_flat.min())
-        max_val = max(truth_flat.max(), pred_flat.max())
-        plt.plot([min_val, max_val], [min_val, max_val], 'r--', label='Perfect Correlation')
-        
-        plt.xlabel('Ground Truth')
-        plt.ylabel('Prediction')
-        plt.title(f'{title}\n{component_name} Component (r = {correlation:.4f})')
-        plt.legend()
-        
-        # Make plot square
-        plt.axis('square')
-        
-        # Return the figure and correlation
-        return plt.gcf(), correlation
-    
-    def analyze_single_set(results, title):
-        # Extract truth and predictions
-        truth = torch.from_numpy(results['nf_truth'][sample_idx]).to(device)
-        pred = torch.from_numpy(results['nf_pred'][sample_idx]).to(device)
-        
-        correlations = {}
-        
-        if arch == 'mlp' or arch == 'cvnn' or arch == 'autoencoder':
-            # Single timestep case
-            components = [
-                ('Real', truth[0], pred[0]),
-                ('Imaginary', truth[1], pred[1])
-            ]
-        else:
-            # Sequential case - only analyze final timestep
-            final_idx = -1
-            components = [
-                ('Real', truth[final_idx, 0], pred[final_idx, 0]),
-                ('Imaginary', truth[final_idx, 1], pred[final_idx, 1])
-            ]
-        
-        # Create plots for each component
-        for comp_name, truth_comp, pred_comp in components:
-            fig, corr = create_correlation_plot(truth_comp, pred_comp, comp_name, title)
-            correlations[comp_name] = corr
-            
-            if save_fig:
-                save_eval_item(save_dir, fig, 
-                             f"correlation_scatter_{title}_{comp_name}.pdf",
-                             'correlation')
-            plt.close(fig)
-        
-        # Print correlation results
-        print(f"\nCorrelation Results for {title}:")
-        for comp_name, corr in correlations.items():
-            print(f"{comp_name} Component Correlation: {corr:.4f}")
-    
-    # Set up title based on fold number
-    if fold_num:
-        base_title = f'Cross-Val-Fold-{fold_num}'
-    else:
-        base_title = 'Default-Split'
-    
-    # Analyze validation data
-    analyze_single_set(test_results['valid'], f"{base_title}-Validation")
-    
-    # Analyze training data if requested
-    if resub:
-        analyze_single_set(test_results['train'], f"{base_title}-Training")
-        
 if __name__ == "__main__":
     # fetch the model names from command line args
     import argparse
