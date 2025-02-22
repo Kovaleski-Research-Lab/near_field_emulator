@@ -37,30 +37,39 @@ class RawDataLoader:
     """
     def __init__(self, conf):
         self.conf = conf
-        self.data_cache: Dict[str, dict] = {} # Cache keyed by stage ("fit, "test")
-        self.train_stats = None  # Will store training data statistics for distribution matching
+        self.data_cache: Dict[str, dict] = {}
+        self.train_stats = None
 
     def match_distribution(self, eval_data, train_stats):
         """
         Scale evaluation data to match statistical properties of training data
+        
+        Args:
+            eval_data: Data to be scaled
+            train_stats: Dictionary containing mean/std of training data
         """
-        # Separate real and imaginary components
-        eval_real = eval_data[:, 0, :, :, :]  # [N, H, W, T]
+        # First compute statistics of evaluation data
+        eval_real = eval_data[:, 0, :, :, :]
         eval_imag = eval_data[:, 1, :, :, :]
         
-        # Scale each component separately
-        scaled_real = ((eval_real - train_stats['real_mean']) / train_stats['real_std']) * \
+        eval_stats = {
+            'real_mean': eval_real.mean().item(),
+            'real_std': eval_real.std().item(),
+            'imag_mean': eval_imag.mean().item(),
+            'imag_std': eval_imag.std().item()
+        }
+        
+        # Scale each component to match training distribution
+        scaled_real = ((eval_real - eval_stats['real_mean']) / eval_stats['real_std']) * \
                      train_stats['real_std'] + train_stats['real_mean']
-        scaled_imag = ((eval_imag - train_stats['imag_mean']) / train_stats['imag_std']) * \
+        scaled_imag = ((eval_imag - eval_stats['imag_mean']) / eval_stats['imag_std']) * \
                      train_stats['imag_std'] + train_stats['imag_mean']
         
         # Recombine
         return torch.stack([scaled_real, scaled_imag], dim=1)
 
     def compute_train_stats(self, data):
-        """
-        Compute mean and std for real and imaginary components of training data
-        """
+        """Compute mean and std for real and imaginary components of training data"""
         near_fields = data['near_fields']
         return {
             'real_mean': near_fields[:, 0, :, :, :].mean().item(),
@@ -78,30 +87,43 @@ class RawDataLoader:
             # Load training data to compute statistics
             train_data = self._load_data(self.conf.data.wv_train)
             self.train_stats = self.compute_train_stats(train_data)
+            print("Training data statistics:")
+            print(self.train_stats)  # Debug print
         
         # Load the data based on our stage
         if stage in ["fit", None]:
             data = self._load_data(self.conf.data.wv_train)
         elif stage == "test":
             data = self._load_data(self.conf.data.wv_eval)
+            print("Before distribution matching:")
+            print(f"Eval data mean: {data['near_fields'].mean()}, std: {data['near_fields'].std()}")
+            
             # Apply distribution matching for evaluation data
             data['near_fields'] = self.match_distribution(
                 data['near_fields'], 
                 self.train_stats
             )
+            
+            print("After distribution matching:")
+            print(f"Eval data mean: {data['near_fields'].mean()}, std: {data['near_fields'].std()}")
         else:
             raise ValueError(f"Unsupported stage: {stage}")
+        
+        # Cache before any additional normalization
+        self.data_cache[stage] = data
         
         # Apply standard normalization if requested (after distribution matching)
         if self.conf.data.normalize:
             train_stats = torch.load(os.path.join(self.conf.paths.data, 
-                                            'preprocessed_data', 
-                                            'full_train_stats.pt'))
+                                                'preprocessed_data', 
+                                                'full_train_stats.pt'))
             train_means = train_stats['means']
             train_stds = train_stats['stds']
             data['near_fields'] = (data['near_fields'] - train_means) / train_stds
-
-        self.data_cache[stage] = data
+            
+            print("After standard normalization:")
+            print(f"Final data mean: {data['near_fields'].mean()}, std: {data['near_fields'].std()}")
+        
         return data
     
     def _load_data(self, wv_idx):
