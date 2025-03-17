@@ -112,16 +112,17 @@ class RawDataLoader:
         # Cache before any additional normalization
         self.data_cache[stage] = data
         
-        # Apply standard normalization if requested (after distribution matching)
+        # Apply normalization/standardization if requested (after distribution matching)
         if self.conf.data.normalize:
-            train_stats = torch.load(os.path.join(self.conf.paths.data, 
+            '''train_stats = torch.load(os.path.join(self.conf.paths.data, 
                                                 'preprocessed_data', 
                                                 'full_train_stats.pt'))
             train_means = train_stats['means']
             train_stds = train_stats['stds']
-            data['near_fields'] = (data['near_fields'] - train_means) / train_stds
+            data['near_fields'] = (data['near_fields'] - train_means) / train_stds'''
+            data['near_fields'] = mapping.l2_norm(data['near_fields'])
             
-            print("After standard normalization:")
+            print("After normalization:")
             print(f"Final data mean: {data['near_fields'].mean()}, std: {data['near_fields'].std()}")
         
         return data
