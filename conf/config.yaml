@@ -261,7 +261,9 @@ data:
     # - wv_preprocess, wv_train and wv_eval refer to indices of wavelengths in wv_dict
     # ---> they control which wavelengths are used for their respective tasks
     # ---> wv_preprocess has to be a single value, wv_train and wv_eval can be multiple values
-    # - normalize: True/False - whether to normalize the data before training
+    # - normalize: True/False - whether to normalize the data before training (UNIMPLEMENTED)
+    # - standardize: True/False - same as above but standardization
+
     n_cpus: 5
     n_folds: 5
     buffer: True
@@ -269,7 +271,8 @@ data:
     wv_preprocess: '3'
     wv_train: '3'
     wv_eval: '3'
-    normalize: True
+    normalize: False
+    standardize: True
 
 #--------------------------------
 #       Kube Params

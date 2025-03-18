@@ -83,16 +83,28 @@ class RawDataLoader:
             return self.data_cache[stage]
         
         # First, ensure we have training statistics if we're in test stage
-        if stage == "test" and self.train_stats is None:
+        '''if stage == "test" and self.train_stats is None:
             # Load training data to compute statistics
             train_data = self._load_data(self.conf.data.wv_train)
             self.train_stats = self.compute_train_stats(train_data)
             print("Training data statistics:")
-            print(self.train_stats)  # Debug print
+            print(self.train_stats)  # Debug print'''
         
         # Load the data based on our stage
         if stage in ["fit", None]:
             data = self._load_data(self.conf.data.wv_train)
+            
+            # Compute global statistics only during training
+            if self.conf.data.normalize:
+                data['near_fields'], self.global_mean, self.global_std = mapping.standardize(data['near_fields'])
+                
+                # Save standardization parameters
+                stats_path = os.path.join(self.conf.paths.data, 'preprocessed_data', 'global_stats.pt')
+                torch.save({
+                    'mean': self.global_mean,
+                    'std': self.global_std
+                }, stats_path)
+            
         elif stage == "test":
             data = self._load_data(self.conf.data.wv_eval)
             print("Before distribution matching:")
@@ -103,9 +115,19 @@ class RawDataLoader:
                 data['near_fields'], 
                 self.train_stats
             )
+            #print("After distribution matching:")
+            #print(f"Eval data mean: {data['near_fields'].mean()}, std: {data['near_fields'].std()}")
             
-            print("After distribution matching:")
-            print(f"Eval data mean: {data['near_fields'].mean()}, std: {data['near_fields'].std()}")
+            if self.conf.data.normalize:
+                # Load saved statistics
+                stats_path = os.path.join(self.conf.paths.data, 'preprocessed_data', 'global_stats.pt')
+                stats = torch.load(stats_path)
+                self.global_mean = stats['mean']
+                self.global_std = stats['std']
+                
+                # Apply standardization using training statistics
+                data['near_fields'] = (data['near_fields'] - self.global_mean) / self.global_std
+                
         else:
             raise ValueError(f"Unsupported stage: {stage}")
         
@@ -113,17 +135,12 @@ class RawDataLoader:
         self.data_cache[stage] = data
         
         # Apply normalization/standardization if requested (after distribution matching)
-        if self.conf.data.normalize:
-            '''train_stats = torch.load(os.path.join(self.conf.paths.data, 
-                                                'preprocessed_data', 
-                                                'full_train_stats.pt'))
-            train_means = train_stats['means']
-            train_stds = train_stats['stds']
-            data['near_fields'] = (data['near_fields'] - train_means) / train_stds'''
-            data['near_fields'] = mapping.l2_norm(data['near_fields'])
+        '''if self.conf.data.normalize:
+            data['near_fields'], l2_norms = mapping.l2_norm(data['near_fields'])
+            self.l2_norms = l2_norms
             
             print("After normalization:")
-            print(f"Final data mean: {data['near_fields'].mean()}, std: {data['near_fields'].std()}")
+            print(f"Final data mean: {data['near_fields'].mean()}, std: {data['near_fields'].std()}")'''
         
         return data
     
@@ -275,6 +292,9 @@ class NFDataModule(LightningDataModule):
             self.P = self.raw_loader.P
         if hasattr(self.raw_loader, 'mean_vec'):
             self.mean_vec = self.raw_loader.mean_vec
+        if hasattr(self.raw_loader, 'global_mean'):
+            self.global_mean = self.raw_loader.global_mean
+            self.global_std = self.raw_loader.global_std
             
         if stage in ["fit", None]:
             self.setup_train_val()

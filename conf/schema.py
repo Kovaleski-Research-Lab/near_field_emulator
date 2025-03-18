@@ -148,7 +148,8 @@ class DataConfig(BaseModel):
     wv_preprocess: str
     wv_train: str
     wv_eval: str
-    normalize: bool = True
+    normalize: bool = False
+    standardize: bool = True
     
     @field_validator("wv_preprocess", mode="before")
     def validate_pp_wavelength(cls, value):

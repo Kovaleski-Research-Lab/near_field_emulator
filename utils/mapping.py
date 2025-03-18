@@ -88,7 +88,7 @@ def l1_norm(data):
     sums = data.sum(dim=(1,4), keepdim=True)
     sums = sums + 1e-8 # avoid killing puppies
     data = data / sums
-    return data
+    return data, sums
 
 def l2_norm(data):
     """Assuming data of shape [samples, channels, H, W, slices]"""
@@ -96,11 +96,19 @@ def l2_norm(data):
     l2_norms = sums_of_squares.sqrt()
     l2_norms = l2_norms + 1e-8
     data = data / l2_norms
-    return data
+    return data, l2_norms
 
 def standardize(data):
     """Assuming data of shape [samples, channels, H, W, slices]"""
-    means = data.mean(dim=(1,4), keepdim=True)
-    stds = data.std(dim=(1,4), keepdim=True)
+    means = data.mean(dim=(0,1,2,3,4), keepdim=True)
+    stds = data.std(dim=(0,1,2,3,4), keepdim=True)
     data = (data - means) / stds
-    return data
+    return data, means, stds
+
+def destandardize(data, stats_path, ):
+    """Assuming data of shape [samples, channels, H, W, slices]"""
+    stats = torch.load(stats_path)
+    global_mean = stats['mean']
+    global_std = stats['std']
+
+    return (data * global_std) + global_mean

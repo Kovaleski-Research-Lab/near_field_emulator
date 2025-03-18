@@ -17,6 +17,7 @@ sys.path.append('../')
 import evaluation.evaluation as eval
 import evaluation.inference as inference
 import utils.model_loader as model_loader
+import utils.mapping as mapping
 from core import datamodule, custom_logger, train, modes
 from core.datamodule import MLPProcessor, TemporalProcessor
 from conf.schema import load_config
@@ -37,6 +38,11 @@ def plotting(conf, test_results, results_dir, fold_num=None):
         print("Created directory: loss_plots")
         print("\nGenerating loss plot...")
         eval.plot_loss(conf, save_dir=results_dir, save_fig=True)
+        
+    # de-standardize results if necessary
+    if conf.standardize:
+        test_results['train'] = mapping.destandardize(test_results['train'])
+        test_results['valid'] = mapping.destandardize(test_results['valid'])
         
     # Create subdirectories for different types of results
     wl = str(conf.data.wv_eval)

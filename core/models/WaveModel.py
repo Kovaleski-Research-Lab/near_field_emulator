@@ -48,6 +48,12 @@ class WaveModel(LightningModule, metaclass=abc.ABCMeta):
         self.spacing_mode = self.conf.spacing_mode
         self.autoreg = self.conf.autoreg
         
+        # normalization params
+        self.l2_norms = None
+        self.means = None
+        self.stds = None
+        self.current_batch_idx = 0 # batch tracking
+        
         # store necessary lists for tracking metrics per fold
         self.test_results = {'train': {'nf_pred': [], 'nf_truth': []},
                              'valid': {'nf_pred': [], 'nf_truth': []}}
@@ -166,6 +172,23 @@ class WaveModel(LightningModule, metaclass=abc.ABCMeta):
                                "monitor": "val_loss"}
         return {"optimizer": optimizer, "lr_scheduler": lr_scheduler_config}
     
+    def destandardize_fields(self, preds):
+        """
+        Destandardize predictions using global mean and std.
+        
+        Parameters
+        ----------
+            preds: Predictions tensor
+            
+        Returns
+        -------
+            Destandardized predictions tensor
+        """
+        if not hasattr(self.trainer.datamodule, 'global_mean'):
+            return preds
+            
+        return preds * self.trainer.datamodule.global_std + self.trainer.datamodule.global_mean
+    
     def training_step(self, batch, batch_idx):
         """
         Common training step shared among all subclasses
@@ -179,14 +202,18 @@ class WaveModel(LightningModule, metaclass=abc.ABCMeta):
             # Get the ground truth sequence
             truth = batch[1]  # This should be your target sequence
             
+            # undo standardization for metric computation (nothing happens if scaling wasn't done)
+            preds_destd = self.destandardize_fields(preds)
+            truth_destd = self.destandardize_fields(truth)
+            
             # Compute PSNR/SSIM for each timestep and average
             psnr_vals = []
             ssim_vals = []
             
             # Ensure predictions and truth have same number of timesteps
             for t in range(min(preds.shape[1], truth.shape[1])):
-                pred_t = preds[:, t]  # [B, 2, H, W]
-                truth_t = truth[:, t]  # [B, 2, H, W]
+                pred_t = preds_destd[:, t]  # [B, 2, H, W]
+                truth_t = truth_destd[:, t]  # [B, 2, H, W]
                 
                 # Handle real and imaginary components separately
                 for comp in range(2):
@@ -236,7 +263,10 @@ class WaveModel(LightningModule, metaclass=abc.ABCMeta):
         # For sequential models, we need to handle multiple timesteps
         if isinstance(batch, list):
             # Get the ground truth sequence
-            truth = batch[1]  # This should be your target sequence
+            truth = batch[1] # target seq
+            
+            preds_destd = self.destandardize_fields(preds)
+            truth_destd = self.destandardize_fields(truth)
             
             # Compute PSNR/SSIM for each timestep and average
             psnr_vals = []
@@ -244,8 +274,8 @@ class WaveModel(LightningModule, metaclass=abc.ABCMeta):
             
             # Ensure predictions and truth have same number of timesteps
             for t in range(min(preds.shape[1], truth.shape[1])):
-                pred_t = preds[:, t]  # [B, 2, H, W]
-                truth_t = truth[:, t]  # [B, 2, H, W]
+                pred_t = preds_destd[:, t]  # [B, 2, H, W]
+                truth_t = truth_destd[:, t]  # [B, 2, H, W]
                 
                 # Handle real and imaginary components separately
                 for comp in range(2):
