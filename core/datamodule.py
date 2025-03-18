@@ -83,7 +83,7 @@ class RawDataLoader:
             return self.data_cache[stage]
         
         # First, ensure we have training statistics if we're in test stage
-        '''if stage == "test" and self.train_stats is None:
+        if stage == "test" and self.train_stats is None:
             # Load training data to compute statistics
             train_data = self._load_data(self.conf.data.wv_train)
             self.train_stats = self.compute_train_stats(train_data)
@@ -95,7 +95,7 @@ class RawDataLoader:
             data = self._load_data(self.conf.data.wv_train)
             
             # Compute global statistics only during training
-            if self.conf.data.normalize:
+            if self.conf.data.standardize:
                 data['near_fields'], self.global_mean, self.global_std = mapping.standardize(data['near_fields'])
                 
                 # Save standardization parameters
@@ -118,7 +118,7 @@ class RawDataLoader:
             #print("After distribution matching:")
             #print(f"Eval data mean: {data['near_fields'].mean()}, std: {data['near_fields'].std()}")
             
-            if self.conf.data.normalize:
+            if self.conf.data.standardize:
                 # Load saved statistics
                 stats_path = os.path.join(self.conf.paths.data, 'preprocessed_data', 'global_stats.pt')
                 stats = torch.load(stats_path)

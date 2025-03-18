@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 1
 
 
@@ -50,7 +50,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 2
-    model_id: 'march-l2norm-14'
+    model_id: 'march-stand-00'
 
     # General Model Parameters
 
