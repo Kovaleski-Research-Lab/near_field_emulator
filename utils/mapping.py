@@ -100,15 +100,20 @@ def l2_norm(data):
 
 def standardize(data):
     """Assuming data of shape [samples, channels, H, W, slices]"""
-    means = data.mean(dim=(0,1,2,3,4), keepdim=True)
-    stds = data.std(dim=(0,1,2,3,4), keepdim=True)
+    means = data.mean(dim=(0,2,3,4), keepdim=True)
+    stds = data.std(dim=(0,2,3,4), keepdim=True)
     data = (data - means) / stds
     return data, means, stds
 
-def destandardize(data, stats_path, ):
+def destandardize(data, stats_path):
     """Assuming data of shape [samples, channels, H, W, slices]"""
     stats = torch.load(stats_path)
     global_mean = stats['mean']
     global_std = stats['std']
-
-    return (data * global_std) + global_mean
+    
+    #TODO: Don't like doing this here but its a temp fix
+    data = np.transpose(data, (0, 2, 3, 4, 1))
+    
+    res = (data * global_std.numpy()) + global_mean.numpy()
+    
+    return np.transpose(res, (0, 4, 1, 2, 3)) # i miss tensor.permute...

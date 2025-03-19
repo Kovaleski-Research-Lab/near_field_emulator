@@ -122,8 +122,9 @@ class RawDataLoader:
                 # Load saved statistics
                 stats_path = os.path.join(self.conf.paths.data, 'preprocessed_data', 'global_stats.pt')
                 stats = torch.load(stats_path)
-                self.global_mean = stats['mean']
-                self.global_std = stats['std']
+                device = data['near_fields'].device
+                self.global_mean = stats['mean'].to(device)
+                self.global_std = stats['std'].to(device)
                 
                 # Apply standardization using training statistics
                 data['near_fields'] = (data['near_fields'] - self.global_mean) / self.global_std
