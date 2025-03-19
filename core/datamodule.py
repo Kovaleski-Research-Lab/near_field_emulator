@@ -104,6 +104,8 @@ class RawDataLoader:
                     'mean': self.global_mean,
                     'std': self.global_std
                 }, stats_path)
+            elif self.conf.data.normalize:
+                data['near_fields'] = mapping.sync_power(data['near_fields'])
             
         elif stage == "test":
             data = self._load_data(self.conf.data.wv_eval)
@@ -128,6 +130,8 @@ class RawDataLoader:
                 
                 # Apply standardization using training statistics
                 data['near_fields'] = (data['near_fields'] - self.global_mean) / self.global_std
+            elif self.conf.data.normalize:
+                data['near_fields'] = mapping.sync_power(data['near_fields'])
                 
         else:
             raise ValueError(f"Unsupported stage: {stage}")

@@ -105,15 +105,28 @@ def standardize(data):
     data = (data - means) / stds
     return data, means, stds
 
-def destandardize(data, stats_path):
-    """Assuming data of shape [samples, channels, H, W, slices]"""
-    stats = torch.load(stats_path)
-    global_mean = stats['mean']
-    global_std = stats['std']
+def sync_power(data):
+    # Calculate magnitude for each position
+    real = data[:, 0, :, :, :]  # [samples, H, W, slices]
+    imag = data[:, 1, :, :, :]  # [samples, H, W, slices]
+    magnitude_squared = real**2 + imag**2  # [samples, H, W, slices]
     
-    #TODO: Don't like doing this here but its a temp fix
-    data = np.transpose(data, (0, 2, 3, 4, 1))
+    # Calculate total power for each slice
+    power_per_slice = magnitude_squared.sum(dim=(1, 2))  # [samples, slices]
     
-    res = (data * global_std.numpy()) + global_mean.numpy()
+    # Calculate mean power across all slices for each sample
+    mean_power = power_per_slice.mean()#dim=1, keepdim=True)  # [samples, 1]
     
-    return np.transpose(res, (0, 4, 1, 2, 3)) # i miss tensor.permute...
+    # Calculate scaling factor for each slice
+    # sqrt because we'll apply this to the field, not the power
+    scale_factor = torch.sqrt(mean_power / power_per_slice)  # [samples, slices]
+    
+    # Add dimensions to match broadcasting
+    scale_factor = scale_factor.unsqueeze(1).unsqueeze(2)  # [samples, 1, 1, slices]
+    
+    # Apply scaling to both real and imaginary components
+    normalized = data.clone()
+    normalized[:, 0, :, :, :] = real * scale_factor
+    normalized[:, 1, :, :, :] = imag * scale_factor
+    
+    return normalized
