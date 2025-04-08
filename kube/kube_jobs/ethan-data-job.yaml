@@ -15,7 +15,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: ethan-data-job
-          image: docker.io/kovaleskilab/ml_basic:v4
+          image: docker.io/kovaleskilab/ml_basic:v4-kube
           imagePullPolicy: Always
           env:
             - name: PYTHONUNBUFFERED
@@ -24,6 +24,7 @@ spec:
 
           args: ["set -x &&
         mkdir -p /root/.ssh &&
+                    pip install seaborn &&
                     git clone git@github.com:Kovaleski-Research-Lab/near_field_emulator.git && 
                     python3 /develop/code/near_field_emulator/main.py --config /develop/code/near_field_emulator/conf/config.yaml"]
           resources:
@@ -34,21 +35,21 @@ spec:
               memory: 200Gi
               cpu: 32
           volumeMounts: 
-            - name: nfe-data
-              mountPath: /develop/data/preprocessed_data
-            - name: dft-volumes
-              mountPath: /develop/data/nfe-data/volumes
+            - name: refidx-data
+              mountPath: /develop/data
+            - name: dft-volumes-refidx
+              mountPath: /develop/results
             - name: ssh-key
               mountPath: "/root/.ssh"
               readOnly: true
 
       volumes:
-        - name: nfe-data  # this is where preprocessed pickle files are
+        - name: refidx-data  # this is where preprocessed pickle files are
           persistentVolumeClaim:
-            claimName: nfe-data
-        - name: dft-volumes
+            claimName: refidx-data
+        - name: dft-volumes-refidx
           persistentVolumeClaim:
-            claimName: dft-volumes
+            claimName: dft-volumes-refidx
         - name: ssh-key
           secret:
             secretName: github-ssh-key

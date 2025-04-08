@@ -298,8 +298,8 @@ kube:
             # interactive pod directories
             data:
                 volumes: /develop/results  # points to folder containing reduced volumes in pvc called dft-volumes
-                preprocessed_data: /develop/data/preprocessed_data # points to folder containing data after it has been preprocessed in pvc called preprocessed-data 
-            timing: /develop/data/preprocessed_data/timing 
+                preprocessed_data: /develop/data # points to folder containing data after it has been preprocessed in pvc called preprocessed-data 
+            timing: /develop/data/timing 
 
             # local path where template is located
             template: kube/templates/data_job.txt
