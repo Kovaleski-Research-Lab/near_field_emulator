@@ -122,7 +122,7 @@ def run(conf):
     # exclude them, put them in this list. Generally, you'll leave it empty for deployment.  
     print(f"Input volumes path: {path_volumes}")
     print(f"Output path: {path_output}")
-    print(f"Contents of volumes directory: {os.listdir(path_volumes)}")  
+    #print(f"Contents of volumes directory: {os.listdir(path_volumes)}")  
 
     #exclude = ['0430.pkl','0662.pkl','0720.pkl','0922.pkl','1158.pkl']
     exclude = []
