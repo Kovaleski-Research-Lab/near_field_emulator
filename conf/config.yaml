@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 0
+directive: 6
 deployment: 1
 
 
@@ -50,7 +50,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 2
-    model_id: 'march-stand-fullsync'
+    model_id: 'april-wine'
 
     # General Model Parameters
 
@@ -281,8 +281,8 @@ kube:
     namespace : gpn-mizzou-muem
     image : docker.io/kovaleskilab/ml_basic:v4-kube
     job_files : /develop/code/near_field_emulator/kube/kube_jobs  # this is a local directory
-    pvc_volumes : dft-volumes # use `kubectl get pvc` to see list of pvcs
-    pvc_preprocessed : nfe-data 
+    pvc_volumes : dft-volumes-refidx # use `kubectl get pvc` to see list of pvcs
+    pvc_preprocessed : refidx-data
     pvc_results : training-results
 
     data_job:
@@ -297,7 +297,7 @@ kube:
 
             # interactive pod directories
             data:
-                volumes: /develop/data/nfe-data/volumes  # points to folder containing reduced volumes in pvc called dft-volumes
+                volumes: /develop/results  # points to folder containing reduced volumes in pvc called dft-volumes
                 preprocessed_data: /develop/data/preprocessed_data # points to folder containing data after it has been preprocessed in pvc called preprocessed-data 
             timing: /develop/data/preprocessed_data/timing 
 
