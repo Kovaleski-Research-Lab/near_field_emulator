@@ -153,7 +153,7 @@ def run(conf):
                     param = torch.from_numpy(np.asarray(phases))
                 elif conf.physics.material_parameter == 'refidx':
                     idx = str(match.group())
-                    param = torch.from_numpy(np.as_array(library[idx])) # library is dict here instead
+                    param = torch.from_numpy(np.asarray(library[idx])) # library is dict here instead
 
                 # load in data
                 sample_path = os.path.join(path_volumes,entry.name)
