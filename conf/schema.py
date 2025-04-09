@@ -114,6 +114,7 @@ class PathsConfig(BaseModel):
         model.results = os.path.join(model.root, model.results)
         model.volumes = os.path.join(model.data, model.volumes)
         model.library = os.path.join(model.root, model.library)
+        model.library_refidx = os.path.join(model.root, model.library_refidx)
         model.pretrained_ae = os.path.join(model.results, model.pretrained_ae)
         model.pretrained_mlp = os.path.join(model.results, model.pretrained_mlp)
         model.pretrained_lstm = os.path.join(model.results, model.pretrained_lstm)
@@ -197,6 +198,7 @@ class PhysicsConfig(BaseModel):
     Lxp: float
     Lyp: float
     adaptive: bool
+    material_parameter: Literal["refidx", "radius"] = "refidx"
     
 class KubeConfig(BaseModel):
     namespace: Literal['gpn-mizzou-muem']

@@ -51,11 +51,14 @@ def create_folder(folder_path):
 # and determines if we are deploying locally or using kubernetes. It returns the correct paths based on
 # this information.
 def get_paths(conf):
-
-    # A pickle file that contains all the meta-atom radii. It is saved in the meta_atom_rnn repo
-    # It matches the file of the same name in the general_3x3 repo from which the dataset was generated.
-
-    library = pickle.load(open(conf.paths.library, 'rb'))
+    
+    
+    if conf.physics.material_parameter == "radius":
+        # A pickle file that contains all the meta-atom radii. It is saved in the meta_atom_rnn repo
+        # It matches the file of the same name in the general_3x3 repo from which the dataset was generated.
+        library = pickle.load(open(conf.paths.library, 'rb'))
+    elif conf.physics.material_parameter == "refidx":
+        library = pickle.load(open(conf.paths.library_refidx, 'rb'))
 
     if conf.deployment == 0:  # we are using local compute
 
@@ -143,11 +146,15 @@ def run(conf):
                 # be needed if you move to a geometry prediction framework (which you'll need to do
                 # for inverse design)
                 match = re.search(r'\d+',entry.name)
-                idx = int(match.group())
-                radii = torch.from_numpy(np.asarray(library[idx]))
-                phases = mapping.radii_to_phase(radii)
-                phases = torch.from_numpy(np.asarray(phases))
-                
+                if conf.physics.material_parameter == 'radius':
+                    idx = int(match.group())
+                    radii = torch.from_numpy(np.asarray(library[idx]))
+                    phases = mapping.radii_to_phase(radii)
+                    param = torch.from_numpy(np.asarray(phases))
+                elif conf.physics.material_parameter == 'refidx':
+                    idx = str(match.group())
+                    param = torch.from_numpy(np.as_array(library[idx])) # library is dict here instead
+
                 # load in data
                 sample_path = os.path.join(path_volumes,entry.name)
                 sample = pickle.load(open(sample_path,"rb"))
@@ -163,7 +170,7 @@ def run(conf):
                 filepath = os.path.join(path_output,filename)
    
                 #print(f"{filename},    {filepath}") 
-                data = {'LPA phases': phases, 'data': vol }
+                data = {'parameter': param, 'data': vol }
                 create_folder(path_output)
 
                 with open(filepath,"wb") as f:

@@ -24,7 +24,7 @@ from utils import mapping
 
 
 # debugging
-#logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
 
 # --------------------------------
 # Raw Data Loading
@@ -473,8 +473,9 @@ class WaveModel_Dataset(Dataset):
 # --------------------------------
 
 # for saving preprocessed data into a single pt. file (LSTM/RNN)
-def load_pickle_data(train_path, valid_path, save_path, arch='mlp'):
+def load_pickle_data(train_path, valid_path, save_path, parameter='radius', arch='mlp'):
     near_fields = []
+    refidx = []
     phases = []
     derivatives = []
     radii = []
@@ -513,31 +514,44 @@ def load_pickle_data(train_path, valid_path, save_path, arch='mlp'):
                     
                     # append near field and phase data
                     near_fields.append(near_field_sample)
-                    phases.append(data['LPA phases'])
                     
-                    # per phases, calculate derivatives and append
-                    der = curvature.get_der_train(data['LPA phases'].view(1, 3, 3))
-                    derivatives.append(der)
-                    
-                    # per phase, compute radii and store
-                    temp_radii = torch.from_numpy(mapping.phase_to_radii(data['LPA phases']))
-                    radii.append(temp_radii)
+                    if parameter == 'radius':
+                        phases.append(data['parameter'])
+                        # per phases, calculate derivatives and append
+                        der = curvature.get_der_train(data['parameter'].view(1, 3, 3))
+                        derivatives.append(der)
+                        
+                        # per phase, compute radii and store
+                        temp_radii = torch.from_numpy(mapping.phase_to_radii(data['parameter']))
+                        radii.append(temp_radii)
+                    elif parameter == 'refidx':
+                        refidx.append(data['parameter'])
     
     # convert to tensors
-    near_fields_tensor = torch.stack([torch.tensor(f) for f in near_fields], dim=0)  # [num_samples, 2, 166, 166, 63]
-    phases_tensor = torch.stack([torch.tensor(p) for p in phases], dim=0)  # [num_samples, 9]
-    derivatives_tensor = torch.stack([torch.tensor(d) for d in derivatives], dim=0)  # [num_samples, 3, 3]
-    radii_tensor = torch.stack([torch.tensor(r) for r in radii], dim=0)  # [num_samples, 9]  
+    near_fields_tensor = torch.stack([torch.tensor(f) for f in near_fields], dim=0)  # [num_samples, 2, 166, 166, 63] 
     tag_tensor = torch.tensor(tag) # [num_samples] 1 for train 0 for valid
     
     logging.debug(f"Near fields tensor size: {near_fields_tensor.shape}")
     logging.debug(f"Memory usage: {near_fields_tensor.element_size() * near_fields_tensor.nelement() / 1024**3:.2f} GB")
     
-    torch.save({'near_fields': near_fields_tensor, 
-                'phases': phases_tensor, 
-                'derivatives': derivatives_tensor,
-                'radii': radii_tensor,
-                'tag': tag_tensor}, save_path)
+    if parameter == 'radius':
+        phases_tensor = torch.stack([torch.tensor(p) for p in phases], dim=0)  # [num_samples, 9]
+        derivatives_tensor = torch.stack([torch.tensor(d) for d in derivatives], dim=0)  # [num_samples, 3, 3]
+        radii_tensor = torch.stack([torch.tensor(r) for r in radii], dim=0)  # [num_samples, 9] 
+        
+        torch.save({'near_fields': near_fields_tensor, 
+                    'phases': phases_tensor, 
+                    'derivatives': derivatives_tensor,
+                    'radii': radii_tensor,
+                    'tag': tag_tensor}, save_path)
+        
+    elif parameter=='refidx':
+        refidx_tensor = torch.stack([torch.tensor(r) for r in refidx], dim=0)  # [num_samples, 1] 
+
+        
+        torch.save({'near_fields': near_fields_tensor, 
+                    'refidx': refidx_tensor,
+                    'tag': tag_tensor}, save_path)
     print(f"Data saved to {save_path}")
     
 def format_temporal_data(data, conf, order=(-1, 0, 1, 2)):
@@ -777,4 +791,3 @@ def preprocess_svd_data(data, conf):
     data['tag'] = og_data['tag']
     
     return data, P, full_svd_params['mean_vec']
-    
