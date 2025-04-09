@@ -547,11 +547,11 @@ def load_pickle_data(train_path, valid_path, save_path, parameter='radius', arch
         
     elif parameter=='refidx':
         refidx_tensor = torch.stack([torch.tensor(r) for r in refidx], dim=0)  # [num_samples, 1] 
-
         
         torch.save({'near_fields': near_fields_tensor, 
                     'refidx': refidx_tensor,
                     'tag': tag_tensor}, save_path)
+        
     print(f"Data saved to {save_path}")
     
 def format_temporal_data(data, conf, order=(-1, 0, 1, 2)):
