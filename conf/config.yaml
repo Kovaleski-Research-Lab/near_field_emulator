@@ -215,7 +215,7 @@ paths:
     results: 'results/meep_meep/'
     volumes: 'nfe-data/volumes'
     library: 'code/near_field_emulator/utils/neighbors_library_allrandom.pkl'
-    library_refidx: 'code/near_field_emulator/utils/libary_refidx.pkl'
+    library_refidx: 'code/near_field_emulator/utils/library_refidx.pkl'
     pretrained_ae: 'autoencoder/model_ae-v1/'
     pretrained_mlp: 'surrogate/model_BASELINE/mlp/'
     pretrained_lstm: 'mlp/model_net2B-BASELINE/'

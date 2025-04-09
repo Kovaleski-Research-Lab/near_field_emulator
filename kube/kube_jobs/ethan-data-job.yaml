@@ -36,7 +36,7 @@ spec:
               cpu: 32
           volumeMounts: 
             - name: refidx-data
-              mountPath: /develop/data
+              mountPath: /develop/data/preprocessed_data
             - name: dft-volumes-refidx
               mountPath: /develop/results
             - name: ssh-key
