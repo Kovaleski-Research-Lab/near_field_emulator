@@ -100,6 +100,7 @@ class PathsConfig(BaseModel):
     results: str
     volumes: str
     library: str
+    library_refidx: str
     pretrained_ae: str
     pretrained_mlp: str
     pretrained_lstm: str
