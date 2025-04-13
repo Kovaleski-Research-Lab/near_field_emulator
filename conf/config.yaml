@@ -13,7 +13,7 @@
 # - 1: kubernetes
 
 directive: 6
-deployment: 1
+deployment: 0
 
 
 #--------------------------------

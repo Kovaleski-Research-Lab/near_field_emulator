@@ -25,19 +25,16 @@ spec:
             cpu: 24
             nvidia.com/a100: 1
         volumeMounts:
-        - name: nfe-data
-          mountPath: /develop/data/preprocessed_data
-        - name: training-results
+        - name: refidx-data
+          mountPath: /develop/data
+        - name: refidx-data
           mountPath: /develop/results
         - name: shm 
           mountPath: /dev/shm
       volumes:
-      - name: nfe-data
+      - name: refidx-data
         persistentVolumeClaim:
-          claimName: nfe-data
-      - name: training-results
-        persistentVolumeClaim:
-          claimName: training-results
+          claimName: refidx-data
       - name: shm
         emptyDir:
           medium: Memory
