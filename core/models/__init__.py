@@ -6,14 +6,14 @@ from .WaveAEConvLSTM import WaveAEConvLSTM
 from .WaveModeLSTM import WaveModeLSTM
 from .WaveDiffusion import WaveDiffusion
 from .WaveMLP import WaveMLP
-from .WaveInverseMLP import WaveInverseMLP
+#from .WaveInverseMLP import WaveInverseMLP
 from .autoencoder import Autoencoder
-from .WaveModelUtils import WaveModelUtils
+#from .WaveModelUtils import WaveModelUtils
 
 __all__ = [
     "Autoencoder",
     "WaveModel",
-    "WaveModelUtils",
+    #"WaveModelUtils",
     "WaveLSTM",
     "WaveConvLSTM",
     "WaveAELSTM",
@@ -21,5 +21,5 @@ __all__ = [
     "WaveModeLSTM",
     "WaveDiffusion",
     "WaveMLP",
-    "WaveInverseMLP"
+    #"WaveInverseMLP"
 ]

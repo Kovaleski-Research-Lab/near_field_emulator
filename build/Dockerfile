@@ -26,3 +26,7 @@ CMD ["/usr/sbin/sshd","-D"]
 WORKDIR /develop/data
 WORKDIR /develop/results
 WORKDIR /develop/code
+
+# Copy and install requirements
+COPY requirements.txt /develop/code/near_field_emulator/
+RUN pip install -r /develop/code/near_field_emulator/requirements.txt
