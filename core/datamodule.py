@@ -432,10 +432,10 @@ class WaveMLP_Dataset(Dataset):
     def format_data(self):
         if self.approach != 4:
             self.radii = self.data['radii']
+            self.phases = self.data['phases']
+            self.derivatives = self.data['derivatives']
         elif self.approach == 4:
             self.radii = self.data['refidx']
-        self.phases = self.data['phases']
-        self.derivatives = self.data['derivatives']
         if not self.is_buffer: # old buffer dataset (U-NET data)
             # focus on 1550 wavelength in y for now
             temp_nf_1550 = self.data['all_near_fields']['near_fields_1550']
