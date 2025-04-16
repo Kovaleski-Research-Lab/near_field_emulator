@@ -50,7 +50,7 @@ class WaveMLP(LightningModule):
         elif self.conf.mlp_strategy == 3:
             self.strat = 'field2field'
         elif self.conf.mlp_strategy == 4:
-            self.strat == "inverse"
+            self.strat = "inverse"
         else:
             raise ValueError("Approach not recognized.")
         
