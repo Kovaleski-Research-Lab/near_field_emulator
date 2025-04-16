@@ -25,6 +25,7 @@ spec:
           args: ["set -x &&
                   mkdir -p /root/.ssh &&
                   pip install seaborn &&
+                  pip install tensorboard &&
                   git clone git@github.com:Kovaleski-Research-Lab/near_field_emulator.git &&
                   python3 /develop/code/near_field_emulator/main.py --config /develop/code/near_field_emulator/conf/config.yaml"]
           resources:

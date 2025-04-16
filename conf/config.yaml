@@ -89,7 +89,7 @@ model:
 
     mlp_strategy: 4
     patch_size: 3
-    num_design_conf: 9
+    num_design_conf: 1
     interpolate_fields: False
 
     # LSTM Parameters
