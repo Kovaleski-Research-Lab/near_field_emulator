@@ -49,6 +49,8 @@ class WaveMLP(LightningModule):
             self.strat = 'distributed'
         elif self.conf.mlp_strategy == 3:
             self.strat = 'field2field'
+        elif self.conf.mlp_strategy == 4:
+            self.strat == "inverse"
         else:
             raise ValueError("Approach not recognized.")
         
@@ -88,6 +90,14 @@ class WaveMLP(LightningModule):
             else:
                 self.mlp_real = self.build_mlp(self.output_size, self.conf.mlp_real)
                 self.mlp_imag = self.build_mlp(self.output_size, self.conf.mlp_imag)
+        
+        elif self.strat == 'inverse':
+            self.output_size = 1
+            if self.name == 'cvnn':
+                self.cvnn = self.build_mlp(56*56, self.conf.cvnn)
+            else:
+                self.mlp_real = self.build_mlp(56*56, self.conf.mlp_real)
+                self.mlp_imag = self.build_mlp(56*56, self.conf.mlp_imag)  
         
         else:
             # Build full MLPs
@@ -142,10 +152,11 @@ class WaveMLP(LightningModule):
         else:
             raise ValueError(f"Unsupported activation function: {activation_name}")
         
-    def forward(self, radii):
+    def forward(self, radii, near_fields):
         if self.name == 'cvnn':
             # Convert radii to complex numbers
             radii_complex = torch.complex(radii, torch.zeros_like(radii))
+            nf_complex = torch.complex(near_fields, torch.zeroes_like(near_fields))
             if self.strat == 'patch':
                 # Patch approach with complex MLPs
                 batch_size = radii.size(0)
@@ -162,6 +173,10 @@ class WaveMLP(LightningModule):
                 # Distributed subset approach
                 output = self.cvnn(radii_complex)
                 output = output.view(-1, self.patch_size, self.patch_size)
+            elif self.strat == 'inverse':
+                # going from fields to design
+                output = self.cvnn(nf_complex)
+                return output
             else:
                 # Full approach
                 #print(f"radii_complex: {radii_complex.shape}")
@@ -210,6 +225,11 @@ class WaveMLP(LightningModule):
                 # Reshape to image size
                 real_output = real_output.view(-1, 166, 166)
                 imag_output = imag_output.view(-1, 166, 166)
+            elif self.strat == 'inverse':
+                # in this case, radii is actually a field, specifically our input field
+                batch_size = radii.size(0)
+                real_output = self.mlp_real(near_fields[:, 0, :, :].reshape(batch_size, -1))
+                imag_output = self.mlp_imag(near_fields[:, 1, :, :].reshape(batch_size, -1)) 
             else:
                 # Full approach
                 real_output = self.mlp_real(radii)
@@ -311,54 +331,58 @@ class WaveMLP(LightningModule):
     
     def objective(self, batch, predictions):
         near_fields, radii = batch
-
-        if self.name == 'cvnn':
-            labels = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
-            labels_real = labels.real
-            labels_imag = labels.imag
-            preds_real = predictions.real
-            preds_imag = predictions.imag
+        
+        if self.strat == 'inverse':
+            design_loss = self.compute_loss(predictions, radii)
+            return {'loss': design_loss}
         else:
-            preds_real, preds_imag = predictions
-            labels_real = near_fields[:, 0, :, :]
-            labels_imag = near_fields[:, 1, :, :]
+            if self.name == 'cvnn':
+                labels = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
+                labels_real = labels.real
+                labels_imag = labels.imag
+                preds_real = predictions.real
+                preds_imag = predictions.imag
+            else:
+                preds_real, preds_imag = predictions
+                labels_real = near_fields[:, 0, :, :]
+                labels_imag = near_fields[:, 1, :, :]
+            
+            # Near-field loss: compute separately for real and imaginary components
+            near_field_loss_real = self.compute_loss(preds_real, labels_real, choice=self.loss_func)
+            near_field_loss_imag = self.compute_loss(preds_imag, labels_imag, choice=self.loss_func)
+            near_field_loss = near_field_loss_real + near_field_loss_imag
         
-        # Near-field loss: compute separately for real and imaginary components
-        near_field_loss_real = self.compute_loss(preds_real, labels_real, choice=self.loss_func)
-        near_field_loss_imag = self.compute_loss(preds_imag, labels_imag, choice=self.loss_func)
-        near_field_loss = near_field_loss_real + near_field_loss_imag
-        
-        # compute other metrics for logging besides specified loss function
-        choices = {
-            'mse': None,
-            #'emd': None,
-            'ssim': None,
-            'psnr': None
-        }
-        
-        for key in choices:
-            if key != self.loss_func:
-                # ignoring emd for now - geomloss library has issues
-                '''if key == 'emd':
-                    # Reshape tensors to (batch_size, num_pixels, 1)
-                    pred_real_reshaped = pred_real.view(pred_real.size(0), -1, 1)
-                    real_near_fields_reshaped = real_near_fields.view(real_near_fields.size(0), -1, 1)
-                    pred_imag_reshaped = pred_imag.view(pred_imag.size(0), -1, 1)
-                    imag_near_fields_reshaped = imag_near_fields.view(imag_near_fields.size(0), -1, 1)
+            # compute other metrics for logging besides specified loss function
+            choices = {
+                'mse': None,
+                #'emd': None,
+                'ssim': None,
+                'psnr': None
+            }
+            
+            for key in choices:
+                if key != self.loss_func:
+                    # ignoring emd for now - geomloss library has issues
+                    '''if key == 'emd':
+                        # Reshape tensors to (batch_size, num_pixels, 1)
+                        pred_real_reshaped = pred_real.view(pred_real.size(0), -1, 1)
+                        real_near_fields_reshaped = real_near_fields.view(real_near_fields.size(0), -1, 1)
+                        pred_imag_reshaped = pred_imag.view(pred_imag.size(0), -1, 1)
+                        imag_near_fields_reshaped = imag_near_fields.view(imag_near_fields.size(0), -1, 1)
 
-                    loss_real = self.compute_loss(pred_real_reshaped, real_near_fields_reshaped, choice=key)
-                    loss_imag = self.compute_loss(pred_imag_reshaped, imag_near_fields_reshaped, choice=key)
-                else:'''
-                loss_real = self.compute_loss(preds_real, labels_real, choice=key)
-                loss_imag = self.compute_loss(preds_imag, labels_imag, choice=key)
-                loss = loss_real + loss_imag
-                choices[key] = loss
-        
-        return {"loss": near_field_loss, **choices}
+                        loss_real = self.compute_loss(pred_real_reshaped, real_near_fields_reshaped, choice=key)
+                        loss_imag = self.compute_loss(pred_imag_reshaped, imag_near_fields_reshaped, choice=key)
+                    else:'''
+                    loss_real = self.compute_loss(preds_real, labels_real, choice=key)
+                    loss_imag = self.compute_loss(preds_imag, labels_imag, choice=key)
+                    loss = loss_real + loss_imag
+                    choices[key] = loss
+            
+            return {"loss": near_field_loss, **choices}
     
     def shared_step(self, batch, batch_idx):
         near_fields, radii = batch
-        preds = self.forward(radii)
+        preds = self.forward(radii, near_fields)
         return preds
     
     def training_step(self, batch, batch_idx):
@@ -406,21 +430,26 @@ class WaveMLP(LightningModule):
     def organize_testing(self, predictions, batch, batch_idx, dataloader_idx):
         near_fields, radii = batch
         
-        if self.name == 'cvnn':
-            labels = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
-            labels_real = labels.real
-            labels_imag = labels.imag
-            preds_real = predictions.real
-            preds_imag = predictions.imag
+        if self.strat == 'inverse':
+            preds_combined = predictions
+            truths_combined = radii
+        
         else:
-            preds_real, preds_imag = predictions
-            labels_real = near_fields[:, 0, :, :]
-            labels_imag = near_fields[:, 1, :, :]
-        
-        # collect preds and ground truths
-        preds_combined = torch.stack([preds_real, preds_imag], dim=1).cpu().numpy()
-        truths_combined = torch.stack([labels_real, labels_imag], dim=1).cpu().numpy()
-        
+            if self.name == 'cvnn':
+                labels = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
+                labels_real = labels.real
+                labels_imag = labels.imag
+                preds_real = predictions.real
+                preds_imag = predictions.imag
+            else:
+                preds_real, preds_imag = predictions
+                labels_real = near_fields[:, 0, :, :]
+                labels_imag = near_fields[:, 1, :, :]
+            
+            # collect preds and ground truths
+            preds_combined = torch.stack([preds_real, preds_imag], dim=1).cpu().numpy()
+            truths_combined = torch.stack([labels_real, labels_imag], dim=1).cpu().numpy()
+            
         # Store predictions and ground truths for analysis after testing
         if dataloader_idx == 0:  # val dataloader
             self.test_results['valid']['nf_pred'].append(preds_combined)
@@ -436,12 +465,3 @@ class WaveMLP(LightningModule):
         for mode in ['train', 'valid']:
             self.test_results[mode]['nf_pred'] = np.concatenate(self.test_results[mode]['nf_pred'], axis=0)
             self.test_results[mode]['nf_truth'] = np.concatenate(self.test_results[mode]['nf_truth'], axis=0)
-
-            # Log results for the current fold
-            '''name = "results"
-            self.logger.experiment.log_results(
-                results=self.test_results[mode],
-                epoch=None,
-                mode=mode,
-                name=name
-            )'''

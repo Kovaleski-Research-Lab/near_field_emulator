@@ -430,7 +430,10 @@ class WaveMLP_Dataset(Dataset):
             return near_field, radius
     
     def format_data(self):
-        self.radii = self.data['radii']
+        if self.approach != 4:
+            self.radii = self.data['radii']
+        elif self.approach == 4:
+            self.radii = self.data['refidx']
         self.phases = self.data['phases']
         self.derivatives = self.data['derivatives']
         if not self.is_buffer: # old buffer dataset (U-NET data)

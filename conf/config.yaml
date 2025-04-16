@@ -87,7 +87,7 @@ model:
         layers: [64, 512, 1024]
         activation: 'complexrelu'
 
-    mlp_strategy: 0
+    mlp_strategy: 4
     patch_size: 3
     num_design_conf: 9
     interpolate_fields: False
