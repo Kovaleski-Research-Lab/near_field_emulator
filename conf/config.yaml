@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 6
+directive: 0
 deployment: 1
 
 
@@ -49,8 +49,8 @@ model:
         # - 9: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 2
-    model_id: 'april-wine'
+    arch: 0
+    model_id: 'inverse-01'
 
     # General Model Parameters
 
