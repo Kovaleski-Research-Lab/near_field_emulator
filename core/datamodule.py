@@ -24,7 +24,7 @@ from utils import mapping
 
 
 # debugging
-logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.DEBUG)
 
 # --------------------------------
 # Raw Data Loading
