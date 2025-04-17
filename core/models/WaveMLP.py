@@ -335,7 +335,7 @@ class WaveMLP(LightningModule):
         print(f"\n\n\nself.strat SELF STRAT IS ----\n\n**??!!--> {self.strat} <--!!??**\n\n")
         
         if self.strat == 'inverse':
-            design_loss = self.compute_loss(predictions, radii)
+            design_loss = self.compute_loss(predictions, radii, choice=self.loss_func)
             return {'loss': design_loss}
         else:
             if self.name == 'cvnn':
