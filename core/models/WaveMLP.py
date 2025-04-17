@@ -86,7 +86,7 @@ class WaveMLP(LightningModule):
         elif self.strat == 'field2field':
             self.output_size = 166 * 166
             if self.name == 'cvnn':
-                self.cvnn = self.build_mlp(self.output_size * 2, self.conf.cvnn)
+                self.cvnn = self.build_mlp(self.output_size, self.conf.cvnn)
             else:
                 self.mlp_real = self.build_mlp(self.output_size, self.conf.mlp_real)
                 self.mlp_imag = self.build_mlp(self.output_size, self.conf.mlp_imag)
@@ -94,7 +94,7 @@ class WaveMLP(LightningModule):
         elif self.strat == 'inverse':
             self.output_size = 1
             if self.name == 'cvnn':
-                self.cvnn = self.build_mlp(56*56*2, self.conf.cvnn)
+                self.cvnn = self.build_mlp(56*56, self.conf.cvnn)
             else:
                 self.mlp_real = self.build_mlp(56*56, self.conf.mlp_real)
                 self.mlp_imag = self.build_mlp(56*56, self.conf.mlp_imag)  
