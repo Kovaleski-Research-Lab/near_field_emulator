@@ -156,7 +156,7 @@ class WaveMLP(LightningModule):
         if self.name == 'cvnn':
             # Convert radii to complex numbers
             radii_complex = torch.complex(radii, torch.zeros_like(radii))
-            nf_complex = torch.complex(near_fields, torch.zeroes_like(near_fields))
+            nf_complex = torch.complex(near_fields, torch.zeros_like(near_fields))
             if self.strat == 'patch':
                 # Patch approach with complex MLPs
                 batch_size = radii.size(0)
