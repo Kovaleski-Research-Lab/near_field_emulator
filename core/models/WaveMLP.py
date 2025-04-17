@@ -156,7 +156,6 @@ class WaveMLP(LightningModule):
         if self.name == 'cvnn':
             # Convert radii to complex numbers
             radii_complex = torch.complex(radii, torch.zeros_like(radii))
-            nf_complex = torch.complex(near_fields, torch.zeros_like(near_fields))
             if self.strat == 'patch':
                 # Patch approach with complex MLPs
                 batch_size = radii.size(0)
@@ -175,8 +174,10 @@ class WaveMLP(LightningModule):
                 output = output.view(-1, self.patch_size, self.patch_size)
             elif self.strat == 'inverse':
                 # going from fields to design
+                batch_size = near_fields.size(0)
+                nf_complex = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
+                nf_complex = nf_complex.view(batch_size, -1)
                 output = self.cvnn(nf_complex)
-                output = output.view(-1, 56, 56)
                 return output
             else:
                 # Full approach
