@@ -332,7 +332,7 @@ class WaveMLP(LightningModule):
     def objective(self, batch, predictions):
         near_fields, radii = batch
         
-        print(f"\n\n\n**??!!--> {predictions.shape} IS SHAPE AND VALUE IS {predictions}<--!!??**\n\n")
+        print(f"\n\n\n**??!!--> AND VALUE IS {predictions}<--!!??**\n\n")
         
         if self.strat == 'inverse':
             design_loss = self.compute_loss(predictions, radii, choice=self.loss_func)
