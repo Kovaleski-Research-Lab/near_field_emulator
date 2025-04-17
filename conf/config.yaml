@@ -49,7 +49,7 @@ model:
         # - 9: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 0
+    arch: 1
     model_id: 'inverse-01'
 
     # General Model Parameters

@@ -226,10 +226,8 @@ class WaveMLP(LightningModule):
                 real_output = real_output.view(-1, 166, 166)
                 imag_output = imag_output.view(-1, 166, 166)
             elif self.strat == 'inverse':
-                # in this case, radii is actually a field, specifically our input field
-                batch_size = radii.size(0)
-                real_output = self.mlp_real(near_fields[:, 0, :, :].reshape(batch_size, -1))
-                imag_output = self.mlp_imag(near_fields[:, 1, :, :].reshape(batch_size, -1)) 
+                # this case is infeasible with dual MLPs (currently)
+                raise NotImplementedError("Dual MLPs for inverse strategy not yet implemented.")
             else:
                 # Full approach
                 real_output = self.mlp_real(radii)
