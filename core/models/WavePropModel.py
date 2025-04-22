@@ -22,9 +22,9 @@ import abc
 
 sys.path.append("../")
 
-class WaveModel(LightningModule, metaclass=abc.ABCMeta):
+class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
     """
-    Near Field Response Time Series Prediction Model
+    Near Field Wave Propagation Prediction Model
     Base Abstract Class
     
     Defines a common interface and attributes that all child classes 
@@ -183,7 +183,7 @@ class WaveModel(LightningModule, metaclass=abc.ABCMeta):
         # For sequential models, we need to handle multiple timesteps
         if isinstance(batch, list):
             # Get the ground truth sequence
-            truth = batch[1]  # This should be your target sequence
+            truth = batch[1]  # target sequence
             
             # Compute PSNR/SSIM for each timestep and average
             psnr_vals = []

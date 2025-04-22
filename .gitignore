@@ -10,7 +10,6 @@ data/
 
 results/
 model_checkpoints/
-models/
 build/authorized_keys
 
 slurm_logs/

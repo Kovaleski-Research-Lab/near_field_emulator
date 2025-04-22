@@ -1,25 +1,27 @@
-from .WaveModel import WaveModel
+from .WavePropModel import WavePropModel # field to field / wave propagation models
+from .WaveResponseModel import WaveResponseModel # Direct mappings between design and fields
 from .WaveLSTM import WaveLSTM
 from .WaveConvLSTM import WaveConvLSTM
 from .WaveAELSTM import WaveAELSTM
 from .WaveAEConvLSTM import WaveAEConvLSTM
 from .WaveModeLSTM import WaveModeLSTM
 from .WaveDiffusion import WaveDiffusion
-from .WaveMLP import WaveMLP
-#from .WaveInverseMLP import WaveInverseMLP
+from .WaveForwardMLP import WaveForwardMLP
+from .WaveInverseMLP import WaveInverseMLP
 from .autoencoder import Autoencoder
-#from .WaveModelUtils import WaveModelUtils
 
 __all__ = [
     "Autoencoder",
-    "WaveModel",
-    #"WaveModelUtils",
+    # Wave Propagation Models
+    "WavePropModel", # parent
     "WaveLSTM",
     "WaveConvLSTM",
     "WaveAELSTM",
     "WaveAEConvLSTM",
     "WaveModeLSTM",
     "WaveDiffusion",
-    "WaveMLP",
-    #"WaveInverseMLP"
+    # Near-Field Response Models
+    "WaveResponseModel", # parent
+    "WaveForwardMLP",
+    "WaveInverseMLP"
 ]

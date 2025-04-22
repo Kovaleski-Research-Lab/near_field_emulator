@@ -1,9 +1,9 @@
 import torch
 import numpy as np
-from .WaveModel import WaveModel
+from .WavePropModel import WavePropModel
 from .autoencoder import Encoder, Decoder
 
-class WaveAELSTM(WaveModel):
+class WaveAELSTM(WavePropModel):
     """Near Field Response Time Series Prediction Model  
     Architecture: LSTM with Autoencoder"""
     def __init__(self, model_config, fold_idx=None):

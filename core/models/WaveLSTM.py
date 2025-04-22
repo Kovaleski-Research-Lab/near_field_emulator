@@ -1,7 +1,7 @@
 import torch
-from .WaveModel import WaveModel
+from .WavePropModel import WavePropModel
 
-class WaveLSTM(WaveModel):
+class WaveLSTM(WavePropModel):
     """Near Field Response Time Series Prediction Model  
     Architecture: LSTM"""
     def __init__(self, model_config, fold_idx=None):

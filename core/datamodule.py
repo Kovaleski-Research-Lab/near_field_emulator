@@ -213,10 +213,14 @@ class MLPProcessor(DataProcessor):
             raw_data = interpolate_fields(raw_data)
         # Get transform from model config if it exists, otherwise None
         transform = getattr(conf.model, 'transform', None)
+        if conf.model.arch == "inverse":
+            strat = conf.model.inverse_strategy
+        else:
+            strat = conf.model.forward_strategy
         return WaveMLP_Dataset(
             raw_data, 
             transform, 
-            conf.model.mlp_strategy, 
+            strat,
             conf.model.patch_size, 
             buffer=conf.data.buffer
         )
@@ -230,7 +234,8 @@ def get_processor(conf) -> DataProcessor:
     mapping_processors = {
         'autoencoder': AutoencoderProcessor(),
         'mlp': MLPProcessor(),
-        'cvnn': MLPProcessor()
+        'cvnn': MLPProcessor(),
+        'inverse': MLPProcessor()
     }
     # Default to temporal processing if the architecture key is not found.
     return mapping_processors.get(conf.model.arch, TemporalProcessor())

@@ -6,9 +6,6 @@ import os
 import yaml
 import torch
 import logging
-#from pytorch_lightning.strategies import DDPStrategy
-#from pytorch_lightning import Trainer, seed_everything
-#from pytorch_lightning.callbacks import ModelCheckpoint
 
 #--------------------------------
 # Import: Custom Python Libraries
@@ -24,8 +21,10 @@ def select_model(model_config, fold_idx=None):
     if model_type == 'autoencoder': # autoencoder pretraining
         network = Autoencoder(model_config, fold_idx)
     elif model_type == 'mlp' or model_type == 'cvnn':
-        network = WaveMLP(model_config, fold_idx)
-    # mode lstm is just the lstm but on epre-encoded data
+        network = WaveForwardMLP(model_config, fold_idx)
+    elif model_type == "inverse":
+        network = WaveInverseMLP(model_config, fold_idx)
+    # mode lstm is just the lstm but on pre-encoded data
     elif model_type == 'lstm':
         network = WaveLSTM(model_config, fold_idx)
     elif model_type == 'modelstm':
@@ -40,19 +39,6 @@ def select_model(model_config, fold_idx=None):
         network = WaveDiffusion(model_config, fold_idx)
     else:
         raise NotImplementedError("Model type not recognized.")
-
-    '''if config.trainer.load_checkpoint:
-         
-        checkpoint_path = os.path.join(config.paths.root, config.paths.checkpoint)
-        checkpoint = os.listdir(checkpoint_path)[0]
-        checkpoint = os.path.join(checkpoint_path, checkpoint)
-        print(checkpoint)
-        
-        state_dict = torch.load(checkpoint)['state_dict']
-        #network.load_from_checkpoint(pm.path_checkpoint,
-        #                                   params = (pm.params_model, pm.params_propagator),
-        #                                   strict = True)
-        network.load_state_dict(state_dict, strict=True)'''
 
     assert network is not None
 

@@ -1,8 +1,8 @@
 import torch
-from .WaveModel import WaveModel
+from .WavePropModel import WavePropModel
 from diffusers import DiffusionPipeline
 
-class WaveDiffusion(WaveModel):
+class WaveDiffusion(WavePropModel):
     """
     A model leveraging a pretrained Stable Diffusion Image-to-Video (SVD) pipeline
     for generating future frames of wavefront propagation.

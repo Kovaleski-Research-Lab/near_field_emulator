@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
-from .WaveModel import WaveModel
+from .WavePropModel import WavePropModel
 from .ConvLSTM import ConvLSTM
 
-class WaveConvLSTM(WaveModel):
+class WaveConvLSTM(WavePropModel):
     """Near Field Response Time Series Prediction Model  
     Architecture: ConvLSTM"""
     def __init__(self, model_config, fold_idx=None):

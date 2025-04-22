@@ -59,7 +59,8 @@ class ModelConfig(BaseModel):
     mlp_real: Dict[str, Any]
     mlp_imag: Dict[str, Any]
     cvnn: Dict[str, Any]
-    mlp_strategy: int = 0
+    forward_strategy: int = 0
+    inverse_strategy: int = 0
     patch_size: int = 3
     num_design_conf: int = 9
     interpolate_fields: bool = False
@@ -311,7 +312,8 @@ def get_model_type(arch: int) -> str:
         6: "modelstm",
         7: "diffusion",
         8: "autoencoder",
-        9: "mlp-lstm"
+        9: "mlp-lstm",
+        10: "inverse"
     }
     return model_types.get(arch, ValueError("Model type not recognized"))
 

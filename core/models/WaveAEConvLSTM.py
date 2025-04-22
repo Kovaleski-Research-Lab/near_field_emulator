@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-from .WaveModel import WaveModel
+from .WavePropModel import WavePropModel
 from .ConvLSTM import ConvLSTM
 from .autoencoder import Encoder, Decoder
 
-class WaveAEConvLSTM(WaveModel):
+class WaveAEConvLSTM(WavePropModel):
     """Near Field Response Time Series Prediction Model  
     Architecture: ConvLSTM with Autoencoder"""
     def __init__(self, model_config, fold_idx=None):

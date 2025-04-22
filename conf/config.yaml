@@ -35,6 +35,7 @@ model:
     # *** Learning a mapping from design parameters to DFT fields ***
         # - 0: Dual MLPs - separate MLPs for real and imaginary
         # - 1: CVNN - Complex-valued MLP
+        # - 10: Inverse Design - using CVNN. inverse_strategy (below) specifies ID method
     # *** Learning wavefront propagation ***
         # - 2: LSTM
         # - 3: ConvLSTM
@@ -71,7 +72,8 @@ model:
     # - ***separate MLPs for real and imaginary parts, or a single CVNN***
     # - layers: Hidden layer neuron counts, len(layers) = number of hidden layers
     # - activation: Activation function for hidden layers
-    # - mlp_strategy: 0: full, 1: patch-wise 2: distributed subset 3: NETWORK 2 field -> field
+    # - forward_strategy: 0: full, 1: patch-wise 2: distributed subset 3: NETWORK 2 field -> field
+    # - inverse_strategy: 0: naive, 1: tandem, ETC
     # - num_design_conf: number of design configurations (usually 3x3: 9)
     # - patch_size: patch height/width for patch wise or distributed subset
 
@@ -87,7 +89,8 @@ model:
         layers: [64, 512, 1024]
         activation: 'complexrelu'
 
-    mlp_strategy: 4
+    forward_strategy: 4
+    inverse_strategy: 0
     patch_size: 3
     num_design_conf: 1
     interpolate_fields: False

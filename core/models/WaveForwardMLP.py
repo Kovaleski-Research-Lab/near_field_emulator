@@ -1,55 +1,38 @@
 #--------------------------------
 # Import: Basic Python Libraries
 #--------------------------------
-
 import sys
 import torch
 import numpy as np
-#from geomloss import SamplesLoss
-from torchmetrics import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
-#from torchvision.models import resnet50, resnet18, resnet34
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
-from pytorch_lightning import LightningModule
 import math
-from complexPyTorch.complexLayers import ComplexBatchNorm2d, ComplexConv2d, ComplexLinear
 
 #--------------------------------
 # Import: Custom Python Libraries
 #--------------------------------
-#from utils import parameter_manager
-#from core.complexNN import ComplexLinear, ModReLU
-from .CVNN import ComplexReLU, ModReLU, ComplexLinearFinal
+from .WaveResponseModel import WaveResponseModel
 
 sys.path.append("../")
 
-class WaveMLP(LightningModule):
+class WaveForwardMLP(WaveResponseModel):
     """Near Field Response Prediction Model  
     Architecture: MLPs (real and imaginary)  
     Modes: Full, patch-wise"""
     def __init__(self, model_config, fold_idx=None):
-        super().__init__()
+        super().__init__(model_config, fold_idx)
         
-        self.conf = model_config
-        self.learning_rate = self.conf.learning_rate
-        self.lr_scheduler = self.conf.lr_scheduler
-        self.loss_func = self.conf.objective_function
-        self.fold_idx = fold_idx
-        self.patch_size = self.conf.patch_size # for non-default approaches
-        self.name = self.conf.arch # mlp or cvnn
-        self.num_design_conf = int(self.conf.num_design_conf)
+    def create_architecture(self):
+        # specific strategies for this model
         self.strat = None
-        
-        if self.conf.mlp_strategy == 0:
+        if self.conf.forward_strategy == 0:
             self.strat = 'standard'
-        elif self.conf.mlp_strategy == 1:
+        elif self.conf.forward_strategy == 1:
             self.strat = 'patch'
-        elif self.conf.mlp_strategy == 2:
+        elif self.conf.forward_strategy == 2:
             self.strat = 'distributed'
-        elif self.conf.mlp_strategy == 3:
+        elif self.conf.forward_strategy == 3:
             self.strat = 'field2field'
-        elif self.conf.mlp_strategy == 4:
+        elif self.conf.forward_strategy == 4:
             self.strat = "inverse"
         else:
             raise ValueError("Approach not recognized.")
@@ -91,6 +74,7 @@ class WaveMLP(LightningModule):
                 self.mlp_real = self.build_mlp(self.output_size, self.conf.mlp_real)
                 self.mlp_imag = self.build_mlp(self.output_size, self.conf.mlp_imag)
         
+        # TODO: phase out, already handled by its own separate subclass now
         elif self.strat == 'inverse':
             self.output_size = 1
             if self.name == 'cvnn':
@@ -108,60 +92,16 @@ class WaveMLP(LightningModule):
                 self.mlp_real = self.build_mlp(self.num_design_conf, self.conf.mlp_real)
                 self.mlp_imag = self.build_mlp(self.num_design_conf, self.conf.mlp_imag)
         
-        self.save_hyperparameters()
-        
-        # Store necessary lists for tracking metrics per fold
-        self.test_results = {'train': {'nf_pred': [], 'nf_truth': []},
-                             'valid': {'nf_pred': [], 'nf_truth': []}}
-        
-        # Initialize metrics
-        self.train_psnr = PeakSignalNoiseRatio(data_range=1.0)
-        self.train_ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
-        self.val_psnr = PeakSignalNoiseRatio(data_range=1.0)
-        self.val_ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
-         
-    def build_mlp(self, input_size, mlp_conf):
-        layers = []
-        in_features = input_size
-        for layer_size in mlp_conf['layers']:
-            if self.name == 'cvnn': # complex-valued NN
-                layers.append(ComplexLinear(in_features, layer_size))
-            else: # real-valued NN
-                layers.append(nn.Linear(in_features, layer_size))
-            layers.append(self.get_activation_function(mlp_conf['activation']))
-            in_features = layer_size
+    def forward(self, designs, near_fields):
         if self.name == 'cvnn':
-            layers.append(ComplexLinearFinal(in_features, self.output_size))
-        else:
-            layers.append(nn.Linear(in_features, self.output_size))
-        return nn.Sequential(*layers)
-        
-    def get_activation_function(self, activation_name):
-        if activation_name == 'relu':
-            return nn.ReLU()
-        elif activation_name == 'sigmoid':
-            return nn.Sigmoid()
-        elif activation_name == 'tanh':
-            return nn.Tanh()
-        elif activation_name == 'leaky_relu':
-            return nn.LeakyReLU()
-        elif activation_name == 'modrelu':
-            return ModReLU()
-        elif activation_name == 'complexrelu':
-            return ComplexReLU()
-        else:
-            raise ValueError(f"Unsupported activation function: {activation_name}")
-        
-    def forward(self, radii, near_fields):
-        if self.name == 'cvnn':
-            # Convert radii to complex numbers
-            radii_complex = torch.complex(radii, torch.zeros_like(radii))
+            # Convert designs to complex numbers
+            designs_complex = torch.complex(designs, torch.zeros_like(designs))
             if self.strat == 'patch':
                 # Patch approach with complex MLPs
-                batch_size = radii.size(0)
+                batch_size = designs.size(0)
                 patches = []
                 for i in range(self.num_patches):
-                    patch = self.cvnn[i](radii_complex)
+                    patch = self.cvnn[i](designs_complex)
                     patch = patch.view(batch_size, self.patch_size, self.patch_size)
                     patches.append(patch)
                 # Assemble patches
@@ -170,9 +110,9 @@ class WaveMLP(LightningModule):
                 output = output[:, :, :166, :166]
             elif self.strat == 'distributed':
                 # Distributed subset approach
-                output = self.cvnn(radii_complex)
+                output = self.cvnn(designs_complex)
                 output = output.view(-1, self.patch_size, self.patch_size)
-            elif self.strat == 'inverse':
+            elif self.strat == 'inverse': #TODO phase out
                 # going from fields to design
                 batch_size = near_fields.size(0)
                 nf_complex = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
@@ -181,8 +121,8 @@ class WaveMLP(LightningModule):
                 return output
             else:
                 # Full approach
-                #print(f"radii_complex: {radii_complex.shape}")
-                output = self.cvnn(radii_complex)
+                #print(f"designs_complex: {designs_complex.shape}")
+                output = self.cvnn(designs_complex)
                 output = output.view(-1, 166, 166)
                 return output
         
@@ -190,18 +130,18 @@ class WaveMLP(LightningModule):
             # Original real-valued MLPs
             if self.strat == 'patch':
                 # Patch approach
-                batch_size = radii.size(0)
+                batch_size = designs.size(0)
                 real_patches = []
                 imag_patches = []
 
                 for i in range(self.num_patches):
                     # Real part
-                    real_patch = self.mlp_real[i](radii)
+                    real_patch = self.mlp_real[i](designs)
                     real_patch = real_patch.view(batch_size, self.patch_size, self.patch_size)
                     real_patches.append(real_patch)
 
                     # Imaginary part
-                    imag_patch = self.mlp_imag[i](radii)
+                    imag_patch = self.mlp_imag[i](designs)
                     imag_patch = imag_patch.view(batch_size, self.patch_size, self.patch_size)
                     imag_patches.append(imag_patch)
 
@@ -214,26 +154,26 @@ class WaveMLP(LightningModule):
                 imag_output = imag_output[:, :166, :166]
             elif self.strat == 'distributed':
                 # Distributed subset approach
-                real_output = self.mlp_real(radii)
-                imag_output = self.mlp_imag(radii)
+                real_output = self.mlp_real(designs)
+                imag_output = self.mlp_imag(designs)
                 # Reshape to patch_size x patch_size
                 real_output = real_output.view(-1, self.patch_size, self.patch_size)
                 imag_output = imag_output.view(-1, self.patch_size, self.patch_size)
             elif self.strat == 'field2field':
                 # in this case, radii is actually a field, specifically our input field
-                batch_size = radii.size(0)
-                real_output = self.mlp_real(radii[:, 0, :, :].reshape(batch_size, -1))
-                imag_output = self.mlp_imag(radii[:, 1, :, :].reshape(batch_size, -1))
+                batch_size = designs.size(0)
+                real_output = self.mlp_real(designs[:, 0, :, :].reshape(batch_size, -1))
+                imag_output = self.mlp_imag(designs[:, 1, :, :].reshape(batch_size, -1))
                 # Reshape to image size
                 real_output = real_output.view(-1, 166, 166)
                 imag_output = imag_output.view(-1, 166, 166)
-            elif self.strat == 'inverse':
+            elif self.strat == 'inverse': #TODO phase out
                 # this case is infeasible with dual MLPs (currently)
                 raise NotImplementedError("Dual MLPs for inverse strategy not yet implemented.")
             else:
                 # Full approach
-                real_output = self.mlp_real(radii)
-                imag_output = self.mlp_imag(radii)
+                real_output = self.mlp_real(designs)
+                imag_output = self.mlp_imag(designs)
                 # Reshape to image size
                 real_output = real_output.view(-1, 166, 166)
                 imag_output = imag_output.view(-1, 166, 166)
@@ -264,75 +204,11 @@ class WaveMLP(LightningModule):
         )
 
         return output 
-        
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        # setup specified scheduler
-        if self.lr_scheduler == 'ReduceLROnPlateau':
-            choice = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min',
-                                                                    factor=0.5, patience=5, 
-                                                                    min_lr=1e-6, threshold=0.001, 
-                                                                    cooldown=2)
-        elif self.lr_scheduler == 'CosineAnnealingLR':
-            choice = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 
-                                                                T_max=100,
-                                                                eta_min=1e-6)
-        elif self.lr_scheduler == 'None':
-            return optimizer
-        else:
-            raise ValueError(f"Unsupported LR scheduler: {self.lr_scheduler}")
-        
-        scheduler = {
-            'scheduler': choice,
-            'interval': 'epoch',
-            'monitor': 'val_loss',
-            'frequency': 1
-        }
 
-        return {'optimizer': optimizer, 'lr_scheduler': scheduler}
-    
-    def compute_loss(self, preds, labels, choice):
-        if choice == 'mse':
-            # Mean Squared Error
-            preds = preds.to(torch.float32).contiguous()
-            labels = labels.to(torch.float32).contiguous()
-            fn = torch.nn.MSELoss()
-            loss = fn(preds, labels)
-        elif choice == 'emd':
-            # ignoring emd for now
-            raise NotImplementedError("Earth Mover's Distance not implemented!")
-            '''# Earth Mover's Distance / Sinkhorn
-            preds = preds.to(torch.float64).contiguous()
-            labels = labels.to(torch.float64).contiguous()
-            fn = SamplesLoss("sinkhorn", p=1, blur=0.05)
-            loss = fn(preds, labels)
-            loss = torch.mean(loss)  # Aggregating the loss'''
-        elif choice == 'psnr':
-            # Peak Signal-to-Noise Ratio
-            preds, labels = preds.unsqueeze(1), labels.unsqueeze(1)  # channel dim
-            fn = PeakSignalNoiseRatio(data_range=1.0).to(self.device)
-            psnr_value = fn(preds, labels)
-            loss = -psnr_value # minimize negative psnr
-        elif choice == 'ssim':
-            # Structural Similarity Index
-            if preds.size(-1) < 11 or preds.size(-2) < 11:
-                loss = 0 # if the size is too small, SSIM is not defined
-            else:
-                preds, labels = preds.unsqueeze(1), labels.unsqueeze(1)  # channel dim
-                torch.use_deterministic_algorithms(True, warn_only=True)
-                with torch.backends.cudnn.flags(enabled=False):
-                    fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.device)
-                    ssim_value = fn(preds, labels)
-                    loss = -ssim_value  # SSIM is a similarity metric
-        else:
-            raise ValueError(f"Unsupported loss function: {choice}")
-            
-        return loss
-    
     def objective(self, batch, predictions):
         near_fields, radii = batch
         
-        if self.strat == 'inverse':
+        if self.strat == 'inverse': #TODO phase out
             design_loss = self.compute_loss(predictions, radii, choice=self.loss_func)
             return {'loss': design_loss}
         else:
@@ -381,58 +257,17 @@ class WaveMLP(LightningModule):
             return {"loss": near_field_loss, **choices}
     
     def shared_step(self, batch, batch_idx):
-        near_fields, radii = batch
-        preds = self.forward(radii, near_fields)
+        near_fields, designs = batch
+        preds = self.forward(designs)
         return preds
-    
-    def training_step(self, batch, batch_idx):
-        preds = self.shared_step(batch, batch_idx)
-        loss_dict = self.objective(batch, preds)
-        loss = loss_dict['loss']
-        
-        # log metrics
-        if self.loss_func == 'psnr' or self.loss_func == 'ssim': # PSNR is inverted for minimization, report true value here
-            self.log('train_loss', -loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
-        else: # mse
-            self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
-        #print(f"train_psnr_recorded: {-loss}")
-        other_metrics = [f"{key}" for key in loss_dict.keys() if key != 'loss' and key != self.loss_func]
-        for key in other_metrics:
-            #print(f"train_{key}", loss_dict[key])
-            self.log(f"train_{key}", loss_dict[key], prog_bar=False, on_step=False, on_epoch=True, sync_dist=True)
-        
-        return {'loss': loss, 'output': preds, 'target': batch}
-    
-    def validation_step(self, batch, batch_idx):
-        preds = self.shared_step(batch, batch_idx)
-        loss_dict = self.objective(batch, preds)
-        loss = loss_dict['loss']
-        
-        #print(f"keys: {loss_dict.keys()}")
-        
-        # log metrics
-        if self.loss_func == 'psnr' or self.loss_func == 'ssim': # PSNR is inverted for minimization, report true value here
-            self.log('val_loss', -loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
-        else: # mse
-            self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
-        #print(f"val_psnr_recorded: {-loss}")
-        other_metrics = [f"{key}" for key in loss_dict.keys() if key != 'loss' and key != self.loss_func]
-        for key in other_metrics:
-            #print(f"valid_{key}", loss_dict[key])
-            self.log(f"valid_{key}", loss_dict[key], prog_bar=False, on_step=False, on_epoch=True, sync_dist=True)
-        
-        return {'loss': loss, 'output': preds, 'target': batch}
-    
-    def test_step(self, batch, batch_idx, dataloader_idx=0):
-        preds = self.shared_step(batch, batch_idx)   
-        self.organize_testing(preds, batch, batch_idx, dataloader_idx)
         
     def organize_testing(self, predictions, batch, batch_idx, dataloader_idx):
-        near_fields, radii = batch
+        near_fields, designs = batch
         
+        # TODO phase out
         if self.strat == 'inverse':
             preds_combined = predictions
-            truths_combined = radii
+            truths_combined = designs
         
         else:
             if self.name == 'cvnn':
