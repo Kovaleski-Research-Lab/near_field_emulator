@@ -190,7 +190,7 @@ The `kube/` directory contains job templates for distributed training. Creating 
 python3 -m kube.launch_training # (or launch_evaluation)
 ```
 
-After the above is ran a complete YAML configuration file is generated and placed in `kube/kube_jobs`. Starting a training job, or evaluation job, or whatever process we're doing then requires running the following from a terminal (example is for convlstm training):
+After the above is ran a complete YAML configuration file is generated and placed in `kube/jobs`. Starting a training job, or evaluation job, or whatever process we're doing then requires running the following from a terminal (example is for convlstm training):
 
 ```
 kubectl apply -f kube/kube_jobs/convlstm-training.yaml
