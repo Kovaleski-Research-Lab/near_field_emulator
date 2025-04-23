@@ -1077,6 +1077,167 @@ def analyze_field_correlations(test_results, resub=False, sample_idx=0,
     else:
         analyze_single_set(test_results['valid'], f"{base_title} Validation")
 
+def analyze_inverse_results(test_results, save_fig=False, save_dir=None):
+    """
+    Analyze and plot results for inverse models.
+    
+    Args:
+        test_results (dict): Dictionary containing train and valid results
+        save_fig (bool): Whether to save the plots
+        save_dir (str): Directory to save plots if save_fig is True
+    """
+    def compute_stats(truth, pred):
+        """Compute statistics for a single dataset"""
+        # Convert to numpy if needed
+        if isinstance(truth, torch.Tensor):
+            truth = truth.cpu().numpy()
+        if isinstance(pred, torch.Tensor):
+            pred = pred.cpu().numpy()
+            
+        # Flatten arrays
+        truth_flat = truth.flatten()
+        pred_flat = pred.flatten()
+        
+        # Compute statistics
+        mae = np.mean(np.abs(truth_flat - pred_flat))
+        rmse = np.sqrt(np.mean((truth_flat - pred_flat) ** 2))
+        correlation = np.corrcoef(truth_flat, pred_flat)[0, 1]
+        r2 = correlation ** 2
+        
+        # Compute error distribution
+        errors = truth_flat - pred_flat
+        error_mean = np.mean(errors)
+        error_std = np.std(errors)
+        
+        return {
+            'MAE': mae,
+            'RMSE': rmse,
+            'Correlation': correlation,
+            'R2': r2,
+            'Error_Mean': error_mean,
+            'Error_Std': error_std
+        }
+    
+    # Compute stats for both train and valid
+    train_stats = compute_stats(test_results['train']['nf_truth'], test_results['train']['nf_pred'])
+    valid_stats = compute_stats(test_results['valid']['nf_truth'], test_results['valid']['nf_pred'])
+    
+    # Save stats to file
+    if save_fig and save_dir:
+        metrics_dir = os.path.join(save_dir, "performance_metrics")
+        os.makedirs(metrics_dir, exist_ok=True)
+        
+        # Save training stats
+        with open(os.path.join(metrics_dir, "train_metrics.txt"), 'w') as f:
+            f.write("Training Statistics:\n")
+            for metric, value in train_stats.items():
+                f.write(f"{metric}: {value:.4f}\n")
+        
+        # Save validation stats
+        with open(os.path.join(metrics_dir, "valid_metrics.txt"), 'w') as f:
+            f.write("Validation Statistics:\n")
+            for metric, value in valid_stats.items():
+                f.write(f"{metric}: {value:.4f}\n")
+    
+    # Create scatter plots
+    plot_inverse_scatter(test_results, save_fig=save_fig, save_dir=save_dir)
+    
+    return train_stats, valid_stats
+
+def plot_inverse_scatter(test_results, save_fig=False, save_dir=None):
+    """
+    Create scatter plots comparing ground truth vs predicted values for inverse models.
+    
+    Args:
+        test_results (dict): Dictionary containing train and valid results
+        save_fig (bool): Whether to save the plots
+        save_dir (str): Directory to save plots if save_fig is True
+    """
+    def create_scatter_plot(truth, pred, title, save_path):
+        """Create a single scatter plot"""
+        # Convert to numpy if needed
+        if isinstance(truth, torch.Tensor):
+            truth = truth.cpu().numpy()
+        if isinstance(pred, torch.Tensor):
+            pred = pred.cpu().numpy()
+            
+        # Flatten arrays
+        truth_flat = truth.flatten()
+        pred_flat = pred.flatten()
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(8, 8))
+        
+        # Create scatter plot with density coloring
+        hb = ax.hexbin(truth_flat, pred_flat, gridsize=50, cmap='viridis', 
+                      mincnt=1, bins='log')
+        
+        # Add colorbar
+        cb = fig.colorbar(hb, ax=ax)
+        cb.set_label('log10(count)')
+        
+        # Add perfect prediction line
+        min_val = min(truth_flat.min(), pred_flat.min())
+        max_val = max(truth_flat.max(), pred_flat.max())
+        ax.plot([min_val, max_val], [min_val, max_val], 'r--', label='Perfect Prediction')
+        
+        # Add statistics
+        stats = {
+            'MAE': np.mean(np.abs(truth_flat - pred_flat)),
+            'RMSE': np.sqrt(np.mean((truth_flat - pred_flat) ** 2)),
+            'R2': np.corrcoef(truth_flat, pred_flat)[0, 1] ** 2
+        }
+        
+        stats_text = '\n'.join([f'{k}: {v:.4f}' for k, v in stats.items()])
+        ax.text(0.05, 0.95, stats_text, transform=ax.transAxes,
+                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        
+        # Set labels and title
+        ax.set_xlabel('Ground Truth')
+        ax.set_ylabel('Predicted')
+        ax.set_title(title)
+        ax.legend()
+        
+        # Save or show
+        if save_fig and save_path:
+            save_eval_item(save_dir, fig, save_path, 'misc')
+        else:
+            plt.show()
+        plt.close()
+    
+    # Create plots for both train and valid
+    if save_fig and save_dir:
+        misc_dir = os.path.join(save_dir, "misc_plots")
+        os.makedirs(misc_dir, exist_ok=True)
+        
+        create_scatter_plot(
+            test_results['train']['nf_truth'],
+            test_results['train']['nf_pred'],
+            'Training Set Predictions',
+            'train_scatter.pdf'
+        )
+        
+        create_scatter_plot(
+            test_results['valid']['nf_truth'],
+            test_results['valid']['nf_pred'],
+            'Validation Set Predictions',
+            'valid_scatter.pdf'
+        )
+    else:
+        create_scatter_plot(
+            test_results['train']['nf_truth'],
+            test_results['train']['nf_pred'],
+            'Training Set Predictions',
+            None
+        )
+        
+        create_scatter_plot(
+            test_results['valid']['nf_truth'],
+            test_results['valid']['nf_pred'],
+            'Validation Set Predictions',
+            None
+        )
+
 if __name__ == "__main__":
     # fetch the model names from command line args
     import argparse

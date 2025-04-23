@@ -13,12 +13,13 @@ from pytorch_lightning import LightningModule
 import math
 import abc
 from complexPyTorch.complexLayers import ComplexBatchNorm2d, ComplexConv2d, ComplexLinear
+from .CVNN import ComplexDropout, ComplexReLU, ModReLU, ComplexLinearFinal
 
 #--------------------------------
 # Import: Custom Python Libraries
 #--------------------------------
 #from utils import parameter_manager
-from .CVNN import ComplexReLU, ModReLU, ComplexLinearFinal
+#from .CVNN import ComplexReLU, ModReLU, ComplexLinearFinal
 
 sys.path.append("../")
 
@@ -107,13 +108,17 @@ class WaveResponseModel(LightningModule, metaclass=abc.ABCMeta):
         layers = []
         in_features = input_size
         for layer_size in mlp_conf['layers']:
-            if self.name == 'cvnn': # complex-valued NN
+            if self.name in ['cvnn', 'inverse']: # complex-valued NN
                 layers.append(ComplexLinear(in_features, layer_size))
+                dropout = ComplexDropout(self.conf.dropout)
+                dropout = dropout.to(self._device)  # Move dropout to correct device
+                layers.append(dropout)
             else: # real-valued NN
                 layers.append(nn.Linear(in_features, layer_size))
+                layers.append(nn.Dropout(self.conf.dropout))
             layers.append(self.get_activation_function(mlp_conf['activation']))
             in_features = layer_size
-        if self.name == 'cvnn':
+        if self.name in ['cvnn', 'inverse']:
             layers.append(ComplexLinearFinal(in_features, self.output_size))
         else:
             layers.append(nn.Linear(in_features, self.output_size))

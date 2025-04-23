@@ -4,6 +4,20 @@ import torch.nn.functional as F
 import math
 from complexPyTorch.complexFunctions import complex_relu
 
+class ComplexDropout(nn.Module):
+    """Complex-valued Dropout Layer that properly handles device placement."""
+    def __init__(self, p=0.5):
+        super(ComplexDropout, self).__init__()
+        self.p = p
+        
+    def forward(self, input):
+        if self.training and self.p > 0:
+            # Apply dropout separately to real and imaginary parts
+            real_part = F.dropout(input.real, p=self.p, training=True)
+            imag_part = F.dropout(input.imag, p=self.p, training=True)
+            return torch.complex(real_part, imag_part)
+        return input
+
 class ComplexLinearFinal(nn.Module):
     """Complex-valued Linear Layer."""
     def __init__(self, in_features, out_features, bias=True):

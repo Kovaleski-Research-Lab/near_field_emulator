@@ -32,6 +32,14 @@ def plotting(conf, test_results, results_dir, fold_num=None):
     """
     The generation of a variety of plots and performance metrics
     """
+    
+    print("lovely printing stats about uhuh yes...\n\n")
+    print(f"test_results: valid truth shape {test_results['valid']['nf_truth'].shape}")
+    print(f"test_results valid pred shape: {test_results['valid']['nf_pred'].shape}") 
+    
+    # determine model type
+    model_type = conf.model.arch
+    
     # plot training and validation loss from recorded loss.csv once
     if not os.path.exists(os.path.join(results_dir, "loss_plots", "combined_loss.pdf")):
         os.makedirs(os.path.join(results_dir, "loss_plots"), exist_ok=True)
@@ -56,12 +64,14 @@ def plotting(conf, test_results, results_dir, fold_num=None):
     flipbook_dir = os.path.join(plots_dir, "flipbooks")
     misc_dir = os.path.join(plots_dir, "misc_plots")
     
+    if model_type == "inverse":
+        # Use specialized inverse model analysis
+        train_stats, valid_stats = eval.analyze_inverse_results(test_results, save_fig=True, save_dir=plots_dir)
+        return train_stats, valid_stats    
+    
     for directory in [metrics_dir, dft_dir, flipbook_dir, misc_dir]:
         os.makedirs(directory, exist_ok=True)
         print(f"Created directory: {directory}")
-
-    # determine model type
-    model_type = conf.model.arch
     
     if conf.trainer.plot_ssim_corr:
         print("\n Computing Correlation Plots...")
@@ -91,7 +101,7 @@ def plotting(conf, test_results, results_dir, fold_num=None):
                                   arch=model_type, fold_num=fold_num, fixed_scale=True)
     
     # visualize performance with animation
-    if model_type != 'autoencoder' and model_type != 'mlp':
+    if model_type not in ['autoencoder', 'mlp', 'cvnn']:
         print("\nGenerating field animations...")
         eval.animate_fields(test_results, dataset='valid', 
                             seq_len=conf.model.seq_len, save_dir=plots_dir)

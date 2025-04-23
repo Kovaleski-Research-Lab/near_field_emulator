@@ -29,20 +29,15 @@ class WaveInverseMLP(WaveResponseModel):
         self.cvnn = self.build_mlp(self.near_field_dim**2, self.conf.cvnn)
         
     def forward(self, designs, near_fields):
-        if self.name == 'cvnn':
-            if self.strat == 'naive':
-                # going from fields to design
-                batch_size = near_fields.size(0)
-                nf_complex = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
-                nf_complex = nf_complex.view(batch_size, -1)
-                output = self.cvnn(nf_complex)
-                return output
-            elif self.strat == 'tandem':
-                raise NotImplementedError("Not quite there yet - Tandem model")
-        
-        else:
-            # safeguard
-            raise NotImplementedError("Dual MLPs or methods other than CVNN for inverse strategy not yet implemented.")
+        if self.strat == 'naive':
+            # going from fields to design
+            batch_size = near_fields.size(0)
+            nf_complex = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
+            nf_complex = nf_complex.view(batch_size, -1)
+            output = self.cvnn(nf_complex)
+            return output
+        elif self.strat == 'tandem':
+            raise NotImplementedError("Not quite there yet - Tandem model")
   
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
@@ -71,21 +66,20 @@ class WaveInverseMLP(WaveResponseModel):
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
     def objective(self, batch, predictions):
-        near_fields, radii = batch
-        labels = radii  
+        near_fields, designs = batch
+        labels = designs
         preds = predictions.real
-        radii_loss = self.compute_loss(near_fields, preds, labels, choice=self.loss_func)
+        design_loss = self.compute_loss(preds, labels, choice=self.loss_func)
         
         choices = {
-            'mse': None,
-            'resim': None
+            'mse': None
         }
         for key in choices:
             if key != self.loss_func:
-                loss = self.compute_loss(near_fields, preds, labels, choice=key)
+                loss = self.compute_loss(preds, labels, choice=key)
                 choices[key] = loss
                 
-        return {"loss": radii_loss, **choices}
+        return {"loss": design_loss, **choices}
 
 
     def shared_step(self, batch, batch_idx):
@@ -112,5 +106,6 @@ class WaveInverseMLP(WaveResponseModel):
     def on_test_end(self):
         # Concatenate results from all batches
         for mode in ['train', 'valid']:
-            self.test_results[mode]['nf_pred'] = np.concatenate(self.test_results[mode]['nf_pred'], axis=0)
-            self.test_results[mode]['nf_truth'] = np.concatenate(self.test_results[mode]['nf_truth'], axis=0)
+            # Ensure tensors are on CPU before concatenation
+            self.test_results[mode]['nf_pred'] = np.concatenate([x.cpu().numpy() if torch.is_tensor(x) else x for x in self.test_results[mode]['nf_pred']], axis=0)
+            self.test_results[mode]['nf_truth'] = np.concatenate([x.cpu().numpy() if torch.is_tensor(x) else x for x in self.test_results[mode]['nf_truth']], axis=0)

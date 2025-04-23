@@ -287,5 +287,6 @@ class WaveForwardMLP(WaveResponseModel):
     def on_test_end(self):
         # Concatenate results from all batches
         for mode in ['train', 'valid']:
-            self.test_results[mode]['nf_pred'] = np.concatenate(self.test_results[mode]['nf_pred'], axis=0)
-            self.test_results[mode]['nf_truth'] = np.concatenate(self.test_results[mode]['nf_truth'], axis=0)
+            # Ensure tensors are on CPU before concatenation
+            self.test_results[mode]['nf_pred'] = np.concatenate([x.cpu().numpy() if torch.is_tensor(x) else x for x in self.test_results[mode]['nf_pred']], axis=0)
+            self.test_results[mode]['nf_truth'] = np.concatenate([x.cpu().numpy() if torch.is_tensor(x) else x for x in self.test_results[mode]['nf_truth']], axis=0)

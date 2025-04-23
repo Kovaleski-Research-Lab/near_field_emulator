@@ -417,7 +417,7 @@ class WaveMLP_Dataset(Dataset):
 
     def __getitem__(self, idx):
         near_field = self.near_fields[idx] # [2, 166, 166]
-        radius = self.radii[idx].float() # [9]
+        design = self.designs[idx].float() # [9]
         
         if self.approach == 2:
             # selecting patch_size evenly distributed pixels
@@ -432,15 +432,17 @@ class WaveMLP_Dataset(Dataset):
             # near field is [2,166,166,2], return the separated dim3
             return near_field[:, :, :, 1], near_field[:, :, :, 0]
         else:
-            return near_field, radius
+            return near_field, design
     
     def format_data(self):
-        if self.approach != 4:
-            self.radii = self.data['radii']
+        # TODO this works now, but future experiments may break this
+        if 'radii' in self.data.keys():
+            self.designs = self.data['radii']
             self.phases = self.data['phases']
             self.derivatives = self.data['derivatives']
-        elif self.approach == 4:
-            self.radii = self.data['refidx']
+        elif 'refidx' in self.data.keys():
+            self.designs = self.data['refidx']
+            
         if not self.is_buffer: # old buffer dataset (U-NET data)
             # focus on 1550 wavelength in y for now
             temp_nf_1550 = self.data['all_near_fields']['near_fields_1550']

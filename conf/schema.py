@@ -59,6 +59,7 @@ class ModelConfig(BaseModel):
     mlp_real: Dict[str, Any]
     mlp_imag: Dict[str, Any]
     cvnn: Dict[str, Any]
+    dropout: float = 0.0
     forward_strategy: int = 0
     inverse_strategy: int = 0
     patch_size: int = 3
@@ -269,7 +270,7 @@ class MainConfig(BaseModel):
         elif main.model.arch == 'mlp-lstm':
             main.paths.results = os.path.join(main.paths.results, 'surrogate', f"model_{main.model.model_id}")
         elif main.model.arch == 'inverse':
-            main.paths.results = os.path.join(main.paths.results, main.model.arch, main.model.inverse_strategy)
+            main.paths.results = os.path.join(main.paths.results, main.model.arch, str(main.model.inverse_strategy))
         else:
             main.paths.results = os.path.join(main.paths.results, main.model.arch, main.model.io_mode, main.model.spacing_mode, f"model_{main.model.model_id}")
         
