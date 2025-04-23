@@ -39,8 +39,8 @@ class WaveForwardMLP(WaveResponseModel):
         
         if self.strat == 'patch': # patch-wise
             self.output_size = (self.patch_size)**2
-            self.num_patches_height = math.ceil(166 / self.patch_size)
-            self.num_patches_width = math.ceil(166 / self.patch_size)
+            self.num_patches_height = math.ceil(self.near_field_dim / self.patch_size)
+            self.num_patches_width = math.ceil(self.near_field_dim / self.patch_size)
             self.num_patches = self.num_patches_height * self.num_patches_width
             # determine whether or not to use complex-valued NN
             # if not, we have separate MLPs, if so, we have one MLP
@@ -67,7 +67,7 @@ class WaveForwardMLP(WaveResponseModel):
                 self.mlp_imag = self.build_mlp(self.num_design_conf, self.conf.mlp_imag)
                 
         elif self.strat == 'field2field':
-            self.output_size = 166 * 166
+            self.output_size = self.near_field_dim**2
             if self.name == 'cvnn':
                 self.cvnn = self.build_mlp(self.output_size, self.conf.cvnn)
             else:
@@ -78,14 +78,14 @@ class WaveForwardMLP(WaveResponseModel):
         elif self.strat == 'inverse':
             self.output_size = 1
             if self.name == 'cvnn':
-                self.cvnn = self.build_mlp(56*56, self.conf.cvnn)
+                self.cvnn = self.build_mlp(self.near_field_dim**2, self.conf.cvnn)
             else:
-                self.mlp_real = self.build_mlp(56*56, self.conf.mlp_real)
-                self.mlp_imag = self.build_mlp(56*56, self.conf.mlp_imag)  
+                self.mlp_real = self.build_mlp(self.near_field_dim**2, self.conf.mlp_real)
+                self.mlp_imag = self.build_mlp(self.near_field_dim**2, self.conf.mlp_imag)  
         
         else:
             # Build full MLPs
-            self.output_size = 166 * 166
+            self.output_size = self.near_field_dim**2
             if self.name == 'cvnn':
                 self.cvnn = self.build_mlp(self.num_design_conf, self.conf.cvnn)
             else:
@@ -107,7 +107,7 @@ class WaveForwardMLP(WaveResponseModel):
                 # Assemble patches
                 output = self.assemble_patches(patches, batch_size)
                 # Crop to original size if necessary
-                output = output[:, :, :166, :166]
+                output = output[:, :, :self.near_field_dim, :self.near_field_dim]
             elif self.strat == 'distributed':
                 # Distributed subset approach
                 output = self.cvnn(designs_complex)
@@ -123,7 +123,7 @@ class WaveForwardMLP(WaveResponseModel):
                 # Full approach
                 #print(f"designs_complex: {designs_complex.shape}")
                 output = self.cvnn(designs_complex)
-                output = output.view(-1, 166, 166)
+                output = output.view(-1, self.near_field_dim, self.near_field_dim)
                 return output
         
         else:
@@ -150,8 +150,8 @@ class WaveForwardMLP(WaveResponseModel):
                 imag_output = self.assemble_patches(imag_patches, batch_size)
 
                 # Crop to original size if necessary
-                real_output = real_output[:, :166, :166]
-                imag_output = imag_output[:, :166, :166]
+                real_output = real_output[:, :self.near_field_dim, :self.near_field_dim]
+                imag_output = imag_output[:, :self.near_field_dim, :self.near_field_dim]
             elif self.strat == 'distributed':
                 # Distributed subset approach
                 real_output = self.mlp_real(designs)
@@ -165,8 +165,8 @@ class WaveForwardMLP(WaveResponseModel):
                 real_output = self.mlp_real(designs[:, 0, :, :].reshape(batch_size, -1))
                 imag_output = self.mlp_imag(designs[:, 1, :, :].reshape(batch_size, -1))
                 # Reshape to image size
-                real_output = real_output.view(-1, 166, 166)
-                imag_output = imag_output.view(-1, 166, 166)
+                real_output = real_output.view(-1, self.near_field_dim, self.near_field_dim)
+                imag_output = imag_output.view(-1, self.near_field_dim, self.near_field_dim)
             elif self.strat == 'inverse': #TODO phase out
                 # this case is infeasible with dual MLPs (currently)
                 raise NotImplementedError("Dual MLPs for inverse strategy not yet implemented.")
@@ -175,8 +175,8 @@ class WaveForwardMLP(WaveResponseModel):
                 real_output = self.mlp_real(designs)
                 imag_output = self.mlp_imag(designs)
                 # Reshape to image size
-                real_output = real_output.view(-1, 166, 166)
-                imag_output = imag_output.view(-1, 166, 166)
+                real_output = real_output.view(-1, self.near_field_dim, self.near_field_dim)
+                imag_output = imag_output.view(-1, self.near_field_dim, self.near_field_dim)
 
             return real_output, imag_output
         
@@ -238,17 +238,6 @@ class WaveForwardMLP(WaveResponseModel):
             
             for key in choices:
                 if key != self.loss_func:
-                    # ignoring emd for now - geomloss library has issues
-                    '''if key == 'emd':
-                        # Reshape tensors to (batch_size, num_pixels, 1)
-                        pred_real_reshaped = pred_real.view(pred_real.size(0), -1, 1)
-                        real_near_fields_reshaped = real_near_fields.view(real_near_fields.size(0), -1, 1)
-                        pred_imag_reshaped = pred_imag.view(pred_imag.size(0), -1, 1)
-                        imag_near_fields_reshaped = imag_near_fields.view(imag_near_fields.size(0), -1, 1)
-
-                        loss_real = self.compute_loss(pred_real_reshaped, real_near_fields_reshaped, choice=key)
-                        loss_imag = self.compute_loss(pred_imag_reshaped, imag_near_fields_reshaped, choice=key)
-                    else:'''
                     loss_real = self.compute_loss(preds_real, labels_real, choice=key)
                     loss_imag = self.compute_loss(preds_imag, labels_imag, choice=key)
                     loss = loss_real + loss_imag

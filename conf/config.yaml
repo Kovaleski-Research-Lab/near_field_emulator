@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 1
 
 
@@ -51,7 +51,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 1
-    model_id: 'inverse-01'
+    model_id: 'refidx_test'
 
     # General Model Parameters
 
@@ -75,6 +75,8 @@ model:
     # - forward_strategy: 0: full, 1: patch-wise 2: distributed subset 3: NETWORK 2 field -> field
     # - inverse_strategy: 0: naive, 1: tandem, ETC
     # - num_design_conf: number of design configurations (usually 3x3: 9)
+    # - near_field_dim: dimensionality of xdim or ydim of the near field response map
+    # - --- NOTE: 166 for radii, 56 for refractive index (for the data we currently have at least)
     # - patch_size: patch height/width for patch wise or distributed subset
 
     mlp_real:
@@ -93,6 +95,7 @@ model:
     inverse_strategy: 0
     patch_size: 3
     num_design_conf: 1
+    near_field_dim: 56
     interpolate_fields: False
 
     # LSTM Parameters

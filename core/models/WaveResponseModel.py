@@ -5,9 +5,7 @@
 import sys
 import torch
 import numpy as np
-#from geomloss import SamplesLoss
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
-#from torchvision.models import resnet50, resnet18, resnet34
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
@@ -42,6 +40,7 @@ class WaveResponseModel(LightningModule, metaclass=abc.ABCMeta):
         self.fold_idx = fold_idx
         self.name = self.conf.arch
         self.num_design_conf = int(self.conf.num_design_conf)
+        self.near_field_dim = int(self.conf.near_field_dim)
         
         self.save_hyperparameters()
         

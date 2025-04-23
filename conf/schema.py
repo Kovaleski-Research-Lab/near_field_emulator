@@ -63,6 +63,7 @@ class ModelConfig(BaseModel):
     inverse_strategy: int = 0
     patch_size: int = 3
     num_design_conf: int = 9
+    near_field_dim: int = 166
     interpolate_fields: bool = False
     lstm: LSTMConfig = None
     modelstm: ModesConfig = None
@@ -256,6 +257,10 @@ class MainConfig(BaseModel):
     
     @model_validator(mode="after")
     def validate_results(cls, main):
+        if main.physics.material_parameter == 'radius':
+            main.paths.results = os.path.join(main.paths.results, 'radii')
+        elif main.physics.material_parameter == 'refidx':
+            main.paths.results = os.path.join(main.paths.results, 'refractive_idx')
         # need specific path for good categorization in results
         if main.model.arch == 'modelstm': # further categorize by mode encoding method
             main.paths.results = os.path.join(main.paths.results, main.model.arch, main.model.modelstm.method, main.model.io_mode, main.model.spacing_mode, f"model_{main.model.model_id}")
@@ -263,6 +268,8 @@ class MainConfig(BaseModel):
             main.paths.results = os.path.join(main.paths.results, main.model.arch, f"model_{main.model.model_id}")
         elif main.model.arch == 'mlp-lstm':
             main.paths.results = os.path.join(main.paths.results, 'surrogate', f"model_{main.model.model_id}")
+        elif main.model.arch == 'inverse':
+            main.paths.results = os.path.join(main.paths.results, main.model.arch, main.model.inverse_strategy)
         else:
             main.paths.results = os.path.join(main.paths.results, main.model.arch, main.model.io_mode, main.model.spacing_mode, f"model_{main.model.model_id}")
         

@@ -26,7 +26,7 @@ class WaveInverseMLP(WaveResponseModel):
             self.strat = 'tandem'
         
         self.output_size = 1
-        self.cvnn = self.build_mlp(56*56, self.conf.cvnn)
+        self.cvnn = self.build_mlp(self.near_field_dim**2, self.conf.cvnn)
         
     def forward(self, designs, near_fields):
         if self.name == 'cvnn':
