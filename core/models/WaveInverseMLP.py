@@ -89,8 +89,8 @@ class WaveInverseMLP(WaveResponseModel):
 
 
     def shared_step(self, batch, batch_idx):
-        near_fields, radii = batch
-        preds = self.forward(near_fields)
+        near_fields, designs = batch
+        preds = self.forward(designs, near_fields)
         return preds
         
     def organize_testing(self, predictions, batch, batch_idx, dataloader_idx):
