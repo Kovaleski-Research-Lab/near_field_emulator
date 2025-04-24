@@ -25,7 +25,7 @@ class WaveInverseMLP(WaveResponseModel):
         elif self.conf.inverse_strategy == 1:
             self.strat = 'tandem'
         
-        self.output_size = 1
+        self.output_size = self.conf.num_design_conf
         self.cvnn = self.build_mlp(self.near_field_dim**2, self.conf.cvnn)
         
     def forward(self, designs, near_fields):

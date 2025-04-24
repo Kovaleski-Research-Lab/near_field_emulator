@@ -270,7 +270,7 @@ class MainConfig(BaseModel):
         elif main.model.arch == 'mlp-lstm':
             main.paths.results = os.path.join(main.paths.results, 'surrogate', f"model_{main.model.model_id}")
         elif main.model.arch == 'inverse':
-            main.paths.results = os.path.join(main.paths.results, main.model.arch, str(main.model.inverse_strategy))
+            main.paths.results = os.path.join(main.paths.results, main.model.arch, str(main.model.inverse_strategy), f"model_{main.model.model_id}")
         else:
             main.paths.results = os.path.join(main.paths.results, main.model.arch, main.model.io_mode, main.model.spacing_mode, f"model_{main.model.model_id}")
         

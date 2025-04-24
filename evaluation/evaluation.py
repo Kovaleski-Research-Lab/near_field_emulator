@@ -1154,38 +1154,39 @@ def plot_inverse_scatter(test_results, save_fig=False, save_dir=None):
         save_dir (str): Directory to save plots if save_fig is True
     """
     def create_scatter_plot(truth, pred, title, save_path):
-        """Create a single scatter plot"""
+        """Create a single scatter plot with aggregated sample values"""
         # Convert to numpy if needed
         if isinstance(truth, torch.Tensor):
             truth = truth.cpu().numpy()
         if isinstance(pred, torch.Tensor):
             pred = pred.cpu().numpy()
             
-        # Flatten arrays
-        truth_flat = truth.flatten()
-        pred_flat = pred.flatten()
+        # Aggregate the 9 parameters per sample by taking the mean
+        truth_agg = np.mean(truth, axis=1)  # shape: (num_samples,)
+        pred_agg = np.mean(pred, axis=1)    # shape: (num_samples,)
+        
+        # Normalize values to range [2.0, 4.0]
+        def normalize_to_range(x, new_min=2.0, new_max=4.0):
+            x_min, x_max = x.min(), x.max()
+            return ((x - x_min) / (x_max - x_min)) * (new_max - new_min) + new_min
+        
+        truth_norm = normalize_to_range(truth_agg)
+        pred_norm = normalize_to_range(pred_agg)
         
         # Create figure
         fig, ax = plt.subplots(figsize=(8, 8))
         
-        # Create scatter plot with density coloring
-        hb = ax.hexbin(truth_flat, pred_flat, gridsize=50, cmap='viridis', 
-                      mincnt=1, bins='log')
-        
-        # Add colorbar
-        cb = fig.colorbar(hb, ax=ax)
-        cb.set_label('log10(count)')
+        # Create scatter plot with individual points
+        ax.scatter(truth_norm, pred_norm, alpha=0.5, s=20, c='blue')
         
         # Add perfect prediction line
-        min_val = min(truth_flat.min(), pred_flat.min())
-        max_val = max(truth_flat.max(), pred_flat.max())
-        ax.plot([min_val, max_val], [min_val, max_val], 'r--', label='Perfect Prediction')
+        ax.plot([2.0, 4.0], [2.0, 4.0], 'r--', label='Perfect Prediction')
         
         # Add statistics
         stats = {
-            'MAE': np.mean(np.abs(truth_flat - pred_flat)),
-            'RMSE': np.sqrt(np.mean((truth_flat - pred_flat) ** 2)),
-            'R2': np.corrcoef(truth_flat, pred_flat)[0, 1] ** 2
+            'MAE': np.mean(np.abs(truth_norm - pred_norm)),
+            'RMSE': np.sqrt(np.mean((truth_norm - pred_norm) ** 2)),
+            'R2': np.corrcoef(truth_norm, pred_norm)[0, 1] ** 2
         }
         
         stats_text = '\n'.join([f'{k}: {v:.4f}' for k, v in stats.items()])
@@ -1193,10 +1194,14 @@ def plot_inverse_scatter(test_results, save_fig=False, save_dir=None):
                 verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
         
         # Set labels and title
-        ax.set_xlabel('Ground Truth')
-        ax.set_ylabel('Predicted')
+        ax.set_xlabel('Ground Truth Refractive Index Average (2x2)')
+        ax.set_ylabel('Predicted Refractive Index Average (2x2)')
         ax.set_title(title)
         ax.legend()
+        
+        # Set axis limits to ensure consistent range
+        ax.set_xlim(2.0, 4.0)
+        ax.set_ylim(2.0, 4.0)
         
         # Save or show
         if save_fig and save_path:

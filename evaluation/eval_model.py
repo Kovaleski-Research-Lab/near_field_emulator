@@ -33,9 +33,8 @@ def plotting(conf, test_results, results_dir, fold_num=None):
     The generation of a variety of plots and performance metrics
     """
     
-    print("lovely printing stats about uhuh yes...\n\n")
-    print(f"test_results: valid truth shape {test_results['valid']['nf_truth'].shape}")
-    print(f"test_results valid pred shape: {test_results['valid']['nf_pred'].shape}") 
+    #print(f"test_results: valid truth shape {test_results['valid']['nf_truth'].shape}")
+    #print(f"test_results valid pred shape: {test_results['valid']['nf_pred'].shape}") 
     
     # determine model type
     model_type = conf.model.arch

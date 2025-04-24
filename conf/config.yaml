@@ -51,7 +51,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 10
-    model_id: 'test1'
+    model_id: 'test-inverse-2x2-large'
 
     # General Model Parameters
 
@@ -91,11 +91,11 @@ model:
         layers: [512, 64, 32]
         activation: 'complexrelu'
 
-    dropout: 0.1
+    dropout: 0.0
     forward_strategy: 0
     inverse_strategy: 0
     patch_size: 3
-    num_design_conf: 1
+    num_design_conf: 4
     near_field_dim: 56
     interpolate_fields: False
 
@@ -190,7 +190,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 16
-    num_epochs: 100 # maximum
+    num_epochs: 50 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
@@ -202,10 +202,10 @@ trainer:
 
     # - cross_validation: True/False - whether to perform cross-validation
     # ---> if False, then a 5-fold 80/20 split is used
-    cross_validation: True
+    cross_validation: False
 
     # early stopping settings
-    patience: 50
+    patience: 15
     min_delta: 0.0001
 
     # plot settings
@@ -260,7 +260,7 @@ physics:
 
     #experiment type - what was varied (pillar radii, height, refractive idx, etc.)
     # for preprocessing. current support for "radius" and "refidx"
-    material_parameter: "refidx"
+    material_parameter: "radius"
 
 #--------------------------------
 #       Datamodule Params

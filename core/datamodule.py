@@ -193,7 +193,7 @@ class RawDataLoader:
             if wv_idx is None:
                 raise ValueError("Wavelength index is required for dataset retrieval")
             wv = str(self.conf.data.wv_dict[wv_idx]).replace('.', '')
-            return os.path.join(self.conf.paths.data, 'preprocessed_data', f'dataset_{wv}.pt')
+            return os.path.join(self.conf.paths.data, f'dataset_{wv}.pt')
  
 # --------------------------------
 # Data Processing
