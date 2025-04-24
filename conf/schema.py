@@ -53,6 +53,8 @@ class TransformerConfig(BaseModel):
     depth: int = 12
     num_heads: int = 12
     mlp_ratio: float = 4.0
+    use_diff_loss: bool = True
+    lambda_diff: float = 0.1
     
 class ModelConfig(BaseModel):
     arch: str # an int in config.yaml

@@ -38,7 +38,7 @@ class WaveTransformer(WavePropModel):
         self.input_height = model_config.near_field_dim
         self.input_width = model_config.near_field_dim
         
-        super.__init__(model_config, fold_idx)
+        super().__init__(model_config, fold_idx)
         
     def create_architecture(self):
         """
@@ -92,11 +92,17 @@ class WaveTransformer(WavePropModel):
         # 5. Decoder Query Embeddings (learnable tokens to prompt the decoder)
         # One query token per output time step
         self.decoder_query_embed = nn.Parameter(torch.zeros(1, self.seq_len, self.embed_dim))
+        self.decoder_temporal_embed = nn.Parameter(torch.zeros(1, self.seq_len, self.embed_dim))
 
         # 6. Prediction Head
-        # Projects decoder output back to the patch dimension for unpatching
-        # We need C_out * P * P features per patch
-        self.prediction_head = nn.Linear(self.embed_dim, self.patch_size * self.patch_size * C)
+        # Use an MLP to project frame embedding (D) to all patch embeddings (N*D)
+        # then another linear layer to project each patch embedding (D) to patch pixels (P*P*C)
+        self.prediction_head_mlp = nn.Sequential(
+            nn.LayerNorm(self.embed_dim),
+            nn.Linear(self.embed_dim, self.num_patches * self.embed_dim),
+            nn.GELU() # nonlinearity
+        )
+        self.patch_projection = nn.Linear(self.embed_dim, self.patch_size * self.patch_size * C)
 
         # 7. Unpatching Layer (Optional but good for reversing Conv2d patch embed)
         # This is a simplified inverse; a more complex MLP could also work
@@ -108,6 +114,7 @@ class WaveTransformer(WavePropModel):
         nn.init.trunc_normal_(self.pos_embed, std=.02)
         nn.init.trunc_normal_(self.temporal_embed, std=.02)
         nn.init.trunc_normal_(self.decoder_query_embed, std=.02)
+        nn.init.trunc_normal_(self.decoder_temporal_embed, std=.02)
         self.apply(self._init_weights) # Initialize other weights
         
     def _init_weights(self, m):
@@ -169,42 +176,65 @@ class WaveTransformer(WavePropModel):
         # Input: (1, T_out, D) -> repeat for batch -> (B, T_out, D)
         # T_out is self.seq_len (the desired output sequence length)
         decoder_input = self.decoder_query_embed.repeat(B, 1, 1)
+        decoder_input = decoder_input + self.decoder_temporal_embed
 
         # Decoder expects target, memory. Both (batch, seq, feature)
         # Output: (B, T_out, D)
         decoder_output = self.transformer_decoder(tgt=decoder_input, memory=memory)
 
-        # --- Prediction Head ---
-        # Project decoder output features to patch features
+        B, T_out = decoder_output.shape[0], decoder_output.shape[1]
+        D = self.embed_dim
+        C = 2 # Assuming C=2 from context
+        N = self.num_patches # N = grid_H * grid_W = 121
+
+        # --- Prediction Head (Revised) ---
+        # 1. Project frame embeddings (D) to all patch embeddings (N*D)
         # Input: (B, T_out, D)
-        # Output: (B, T_out, P*P*C)
-        pred_patches_flat = self.prediction_head(decoder_output)
-        T_out = self.seq_len # Should match decoder_query_embed length
+        projected_to_all_patches = self.prediction_head_mlp(decoder_output) # Output: (B, T_out, N * D)
+
+        # 2. Reshape to separate the patch dimension
+        # Output: (B, T_out, N, D)
+        patch_embeddings = projected_to_all_patches.view(B, T_out, N, D)
+
+        # 3. Project each patch's embedding (D) to its flattened pixels (P*P*C)
+        # Apply linear layer to the last dimension (D)
+        # Input: (B, T_out, N, D)
+        # To apply linear efficiently, reshape: (B * T_out * N, D)
+        pred_patches_flat = self.patch_projection(patch_embeddings.view(-1, D)) # Output: (B * T_out * N, P*P*C)
+
+        # Reshape back to include B, T_out, N dimensions
+        # Output: (B, T_out, N, P*P*C) - THIS is the tensor needed before the problematic view
+        pred_patches_flat = pred_patches_flat.view(B, T_out, N, self.patch_size * self.patch_size * C)
+
 
         # --- Unpatching ---
-        # Reshape flat patches back into spatial grid for each time step
-        # Output: (B, T_out, grid_H, grid_W, P*P*C) # Need careful reshape
-        # Aim for: (B * T_out, C, H_pad, W_pad)
-        # Let's reshape pred_patches_flat into image dimensions directly
-        # From (B, T_out, P*P*C)
-        # -> (B * T_out, P*P*C)
-        # -> (B * T_out, C, P, P) ?? No, need grid structure
-        
-        # Reshape from (B, T_out, P*P*C) -> (B*T_out, N, P*P*C) ? Doesn't make sense
-        # Let's reshape from (B, T_out, D) decoder output using an MLP + reshape
-        # Alternative Head/Unpatch:
-        # pred_patches = self.prediction_head(decoder_output) # (B, T_out, P*P*C)
-        # pred_patches = pred_patches.view(B * T_out, N, self.patch_size, self.patch_size, C) # Doesn't work
-        
-        # Simpler unpatching using Fold (conceptual, requires matching kernel/stride)
-        # Or reshape directly assuming correct ordering from linear layer:
-        pred_patches = pred_patches_flat.view(B * T_out, grid_H, grid_W, self.patch_size, self.patch_size, C)
-        pred_patches = pred_patches.permute(0, 5, 1, 3, 2, 4) # B*T, C, grid_H, P, grid_W, P
+        # Now pred_patches_flat has shape (B, T_out, N, P*P*C)
+        # Total elements: B * T_out * N * P * P * C = 240 * 121 * 512 = 14,876,160. This matches the target.
+
+        # Reshape for the 6D view operation: (B * T_out, N, P*P*C)
+        pred_patches_flat_reshaped = pred_patches_flat.view(B * T_out, N, -1)
+
+        # Reshape into grid structure: (B * T_out, grid_H, grid_W, P*P*C)
+        # Note: N must be grid_H * grid_W
+        pred_patches_grid = pred_patches_flat_reshaped.view(B * T_out, self.grid_size[0], self.grid_size[1], self.patch_size * self.patch_size * C)
+
+        # Reshape into the 6D structure needed for permuting patches
+        # Input: (B*T_out, grid_H, grid_W, P*P*C)
+        # Output: (B*T_out, grid_H, grid_W, P, P, C)
+        # This reshape requires P*P*C to be ordered correctly (e.g., C-last)
+        pred_patches = pred_patches_grid.view(B * T_out, self.grid_size[0], self.grid_size[1], self.patch_size, self.patch_size, C) # This is the problematic line (201 approx) - should work now
+
+        # Permute to put C channel first, then merge patch dimensions
+        # Output: (B * T_out, C, grid_H, P, grid_W, P)
+        pred_patches = pred_patches.permute(0, 5, 1, 3, 2, 4)
+
+        # Reshape to final padded image size by merging grid and patch dims
+        # Output: (B * T_out, C, H_pad, W_pad)
         preds_padded = pred_patches.reshape(B * T_out, C, self.padded_H, self.padded_W)
 
         # --- Final Output ---
         # Crop padding to original size
-        # Calculate cropping indices
+        padding = get_padding_2d((self.input_height, self.input_width), self.patch_size)
         crop_h_start = padding[2]
         crop_h_end = self.padded_H - padding[3]
         crop_w_start = padding[0]
@@ -214,10 +244,51 @@ class WaveTransformer(WavePropModel):
         # preds shape: (B * T_out, C, H, W)
 
         # Reshape to final format: (B, T_out, C, H, W)
-        preds_final = preds.view(B, T_out, C, H, W)
+        preds_final = preds.view(B, T_out, C, self.input_height, self.input_width)
 
-        # We don't really have 'meta' state like in LSTM
         return preds_final, None
+    
+    def objective(self, preds, labels):
+        """
+        objective loss calculation for the transformer. Differs from other implementations in the
+        inclusion of an optional difference loss term for temporal dynamics.
+        """
+        use_diff_loss = self.arch_conf.use_diff_loss
+        lambda_diff = self.arch_conf.lambda_diff
+
+        # --- 1. Calculate the base loss ---
+        base_loss = self.compute_loss(preds, labels, choice=self.loss_func)
+        total_loss = base_loss
+
+        # --- 2. Calculate the difference loss (if enabled) ---
+        diff_loss = torch.tensor(0.0, device=preds.device) # Initialize as zero tensor on correct device
+        if use_diff_loss and preds.shape[1] > 1: # sequence length needs to be greater than 1
+            # Calculate differences between consecutive time steps
+            # preds shape: (B, T, C, H, W)
+            pred_diff = preds[:, 1:, ...] - preds[:, :-1, ...]  # Shape: (B, T-1, C, H, W)
+            label_diff = labels[:, 1:, ...] - labels[:, :-1, ...] # Shape: (B, T-1, C, H, W)
+
+            # Calculate MSE loss on the differences.
+            diff_loss_fn = nn.MSELoss()
+            diff_loss = diff_loss_fn(pred_diff, label_diff)
+
+            # Combine the base loss and the weighted difference loss
+            total_loss = base_loss + lambda_diff * diff_loss
+
+        # --- 3. Logging ---
+        log_prefix = 'train' if self.training else 'val'
+
+        self.log(f'{log_prefix}/base_loss', base_loss,
+                 on_step=False, on_epoch=True, sync_dist=True, prog_bar=False)
+
+        if use_diff_loss and preds.shape[1] > 1:
+            self.log(f'{log_prefix}/diff_loss', diff_loss,
+                     on_step=False, on_epoch=True, sync_dist=True, prog_bar=False)
+            # Log the lambda value used, helpful for tracking experiments
+            self.log('hyperparameters/lambda_diff', lambda_diff,
+                     on_step=False, on_epoch=True, sync_dist=True)
+        
+        return {"loss": total_loss}
 
     def shared_step(self, batch, batch_idx):
         """
@@ -239,10 +310,19 @@ class WaveTransformer(WavePropModel):
         # Return loss and predictions (already in correct B, T, C, H, W format)
         return loss, preds
 
-    # organize_testing can likely be inherited directly if shared_step returns
-    # predictions in the format (B, T, C, H, W) as the base class expects.
     def organize_testing(self, preds, batch, batch_idx, dataloader_idx=0):
-        # This method from the base class should work if 'preds'
-        # has the shape (batch_size, seq_len, channels, height, width)
-        # and batch = (samples, labels) where labels has the same shape.
-        return super().organize_testing(preds, batch, batch_idx, dataloader_idx)
+        samples, labels = batch
+        preds_np = preds.detach().cpu().numpy()
+        labels_np = labels.detach().cpu().numpy()
+        
+        # Determine the mode based on dataloader_idx
+        if dataloader_idx == 0:
+            mode = 'valid'
+        elif dataloader_idx == 1:
+            mode = 'train'
+        else:
+            raise ValueError(f"Invalid dataloader index: {dataloader_idx}")
+        
+        # Append predictions
+        self.test_results[mode]['nf_pred'].append(preds_np)
+        self.test_results[mode]['nf_truth'].append(labels_np)

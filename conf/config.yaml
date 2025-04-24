@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 2
+directive: 1
 deployment: 1
 
 
@@ -52,7 +52,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 8
-    model_id: 'test-01'
+    model_id: 'test-02'
 
     # General Model Parameters
 
@@ -188,6 +188,8 @@ model:
         depth: 12
         num_heads: 12
         mlp_ratio: 4.0
+        use_diff_loss: True
+        lambda_diff: 0.1
 
     # General Time Series Parameters
     # - seq_len: number of time steps
@@ -204,7 +206,7 @@ model:
 #       Training Params
 #--------------------------------
 trainer:
-    batch_size: 16
+    batch_size: 8
     num_epochs: 50 # maximum
 
     accelerator: 'gpu' 

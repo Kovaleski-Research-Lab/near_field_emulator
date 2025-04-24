@@ -306,14 +306,5 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
                 self.test_results[mode]['nf_pred'] = np.concatenate(self.test_results[mode]['nf_pred'], axis=0)
                 self.test_results[mode]['nf_truth'] = np.concatenate(self.test_results[mode]['nf_truth'], axis=0)
                 
-                # old approach
-                '''             
-                # Log or save results
-                self.logger.experiment.log_results(
-                    results=self.test_results[mode],
-                    epoch=None,
-                    mode=mode,
-                    name="results"
-                )'''
             else:
                 print(f"No test results for mode: {mode}")
