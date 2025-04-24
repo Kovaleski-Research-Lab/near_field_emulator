@@ -47,6 +47,13 @@ class DiffusionConfig(BaseModel):
     prompt: str = ''
     use_half_precision: bool = True
     
+class TransformerConfig(BaseModel):
+    patch_size: int = 16
+    embed_dim: int = 768
+    depth: int = 12
+    num_heads: int = 12
+    mlp_ratio: float = 4.0
+    
 class ModelConfig(BaseModel):
     arch: str # an int in config.yaml
     model_id: str
@@ -71,6 +78,7 @@ class ModelConfig(BaseModel):
     convlstm: ConvLSTMConfig = None
     autoencoder: AutoencoderConfig = None
     diffusion: DiffusionConfig = None
+    transformer: TransformerConfig = None
     seq_len: int = 10
     io_mode: str = "one_to_many"
     autoreg: bool = True
@@ -319,8 +327,9 @@ def get_model_type(arch: int) -> str:
         5: "ae-convlstm",
         6: "modelstm",
         7: "diffusion",
-        8: "autoencoder",
-        9: "mlp-lstm",
+        8: "transformer",
+        9: "autoencoder",
+        00: "mlp-lstm",
         10: "inverse"
     }
     return model_types.get(arch, ValueError("Model type not recognized"))

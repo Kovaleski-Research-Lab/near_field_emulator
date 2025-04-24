@@ -37,6 +37,8 @@ def select_model(model_config, fold_idx=None):
         network = WaveAEConvLSTM(model_config, fold_idx)
     elif model_type == 'diffusion':
         network = WaveDiffusion(model_config, fold_idx)
+    elif model_type == 'transformer':
+        network = WaveTransformer(model_config, fold_idx)
     else:
         raise NotImplementedError("Model type not recognized.")
 

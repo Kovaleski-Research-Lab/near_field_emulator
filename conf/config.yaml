@@ -44,14 +44,15 @@ model:
         # - 6: mode-LSTM - LSTM operating on a deterministic dim reduction of the fields
             # - SVD, random projection, gauss, fourier
         # - 7: diffusion - img2video diffuser model
+        # - 8: transformer - simple attention-based approach
     # *** Learning a reconstrutible latent representation of the fields ***
-        # - 8: Autoencoder - Used in conjunction with arch 4, 5
+        # - 9: Autoencoder - Used in conjunction with arch 4, 5
     # *** Full-wave surrogate model ***
-        # - 9: MLP-LSTM - MLP followed by LSTM
+        # - 00: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 10
-    model_id: 'test-inverse-2x2-large'
+    arch: 8
+    model_id: 'test-01'
 
     # General Model Parameters
 
@@ -95,8 +96,8 @@ model:
     forward_strategy: 0
     inverse_strategy: 0
     patch_size: 3
-    num_design_conf: 4
-    near_field_dim: 56
+    num_design_conf: 9
+    near_field_dim: 166
     interpolate_fields: False
 
     # LSTM Parameters
@@ -173,6 +174,20 @@ model:
         num_generated_frames: 14
         prompt: ''
         use_half_precision: True
+
+    # Transformer Parameters
+    # - patch_size: size of patches to split input into
+    # - embed_dim: dimensionity in embedding space
+    # - depth: total layers (e.g., 6 encoder, 6 decoder)
+    # - num_heads: attention heads
+    # - mlp_ratio:
+
+    transformer:
+        patch_size: 16
+        embed_dim: 768
+        depth: 12
+        num_heads: 12
+        mlp_ratio: 4.0
 
     # General Time Series Parameters
     # - seq_len: number of time steps
