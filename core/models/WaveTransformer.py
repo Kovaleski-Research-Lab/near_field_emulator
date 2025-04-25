@@ -38,215 +38,259 @@ class WaveTransformer(WavePropModel):
         self.input_height = model_config.near_field_dim
         self.input_width = model_config.near_field_dim
         
+        self.t_in_for_pos_embed = 1 # Define how many input steps pos embed should handle
+        self.max_steps = self.t_in_for_pos_embed + model_config.seq_len
+        
         super().__init__(model_config, fold_idx)
+      
+    def _create_upsample_block(self, in_channels, out_channels):
+        """Helper function to create a ConvTranspose2d block."""
+        return nn.Sequential(
+            nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=True),
+            nn.InstanceNorm2d(out_channels, affine=True),
+            nn.GELU()
+        )      
         
     def create_architecture(self):
-        """
-        Transformer-specific layers and stuff
-        """
         C = 2 # Input channels (real, imag)
         H, W = self.input_height, self.input_width
-        self.padded_H = H + get_padding_2d((H, W), self.patch_size)[2] + get_padding_2d((H, W), self.patch_size)[3]
-        self.padded_W = W + get_padding_2d((H, W), self.patch_size)[0] + get_padding_2d((H, W), self.patch_size)[1]
+        padding_dims = get_padding_2d((H, W), self.patch_size)
+        self.padded_H = H + padding_dims[2] + padding_dims[3]
+        self.padded_W = W + padding_dims[0] + padding_dims[1]
         self.grid_size = (self.padded_H // self.patch_size, self.padded_W // self.patch_size)
         self.num_patches = self.grid_size[0] * self.grid_size[1]
-        
+        N = self.num_patches
+
         # --- Layers ---
-        # 1. Patch Embedding
+        # 1. Patch Embedding (used for input and feedback)
         self.patch_embed = nn.Conv2d(C, self.embed_dim,
                                      kernel_size=self.patch_size,
                                      stride=self.patch_size)
 
         # 2. Positional Embeddings
-        # Spatial: Learnable embedding for each patch position
-        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, self.embed_dim))
-        # Temporal: Learnable embedding for each time step (use max sequence length)
-        self.temporal_embed = nn.Parameter(torch.zeros(1, self.seq_len + 1, self.embed_dim)) # +1 just in case
+        self.pos_embed = nn.Parameter(torch.zeros(1, N, self.embed_dim)) # Spatial
+        self.temporal_embed = nn.Parameter(torch.zeros(1, self.max_steps, self.embed_dim)) # Temporal
 
-        # 3. Transformer Encoder
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=self.embed_dim,
-            nhead=self.num_heads,
-            dim_feedforward=int(self.embed_dim * self.mlp_ratio),
-            dropout=self.dropout,
-            activation=F.gelu, # GELU is common in Transformers
-            batch_first=True # Expect (batch, seq, feature)
-        )
-        
-        # Split depth between encoder and decoder
-        num_encoder_layers = self.depth // 2
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
-
-        # 4. Transformer Decoder
-        decoder_layer = nn.TransformerDecoderLayer(
+        # 3. Transformer Block (Encoder Layers)
+        transformer_layer = nn.TransformerEncoderLayer(
              d_model=self.embed_dim,
              nhead=self.num_heads,
              dim_feedforward=int(self.embed_dim * self.mlp_ratio),
              dropout=self.dropout,
              activation=F.gelu,
-             batch_first=True # Expect (batch, seq, feature)
+             batch_first=True # Crucial for easier handling
         )
-        num_decoder_layers = self.depth - num_encoder_layers
-        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_decoder_layers)
+        # Use TransformerEncoder with attention
+        self.transformer_block = nn.TransformerEncoder(transformer_layer, num_layers=self.depth)
+        # LayerNorm before prediction head is common
+        self.norm = nn.LayerNorm(self.embed_dim)
 
-        # 5. Decoder Query Embeddings (learnable tokens to prompt the decoder)
-        # One query token per output time step
-        self.decoder_query_embed = nn.Parameter(torch.zeros(1, self.seq_len, self.embed_dim))
-        self.decoder_temporal_embed = nn.Parameter(torch.zeros(1, self.seq_len, self.embed_dim))
+        # 4. Prediction Head
+        # Takes the final embedding (D) and predicts all patch features (N*P*P*C)
+        # Needs to reconstruct the full spatial frame from a single vector per time step
+        '''bottleneck_channels = self.embed_dim # e.g., 256
+        up_channels = [bottleneck_channels, bottleneck_channels // 2, bottleneck_channels // 4, bottleneck_channels // 8] # e.g., [256, 128, 64, 32]
+        if up_channels[-1] < C: # Ensure last channel count is at least C
+             up_channels[-1] = C
 
-        # 6. Prediction Head
-        # Use an MLP to project frame embedding (D) to all patch embeddings (N*D)
-        # then another linear layer to project each patch embedding (D) to patch pixels (P*P*C)
+        # Project D embedding to start the spatial grid (grid_H x grid_W)
+        self.head_bottleneck_proj = nn.Linear(self.embed_dim, up_channels[0] * self.grid_size[0] * self.grid_size[1])
+
+        # Upsampling blocks (4 stages to go from 11x11 -> 176x176)
+        self.upsample_block1 = self._create_upsample_block(up_channels[0], up_channels[1]) # 11x11 -> 22x22
+        self.upsample_block2 = self._create_upsample_block(up_channels[1], up_channels[2]) # 22x22 -> 44x44
+        self.upsample_block3 = self._create_upsample_block(up_channels[2], up_channels[3]) # 44x44 -> 88x88
+        # Final block goes to C=2 channels aannd no batchnorm needed prob
+        self.upsample_block4 = nn.ConvTranspose2d(up_channels[3], C, kernel_size=4, stride=2, padding=1) # 88x88 -> 176x176'''
+        
+        # MLP PREDICTION HEAD
         self.prediction_head_mlp = nn.Sequential(
-            nn.LayerNorm(self.embed_dim),
-            nn.Linear(self.embed_dim, self.num_patches * self.embed_dim),
-            nn.GELU() # nonlinearity
+            # Map D -> N*D (Generate embeddings for all patch locations)
+            nn.Linear(self.embed_dim, N * self.embed_dim),
+            nn.GELU()
         )
+        # Project each generated patch embedding D -> P*P*C
         self.patch_projection = nn.Linear(self.embed_dim, self.patch_size * self.patch_size * C)
 
-        # 7. Unpatching Layer (Optional but good for reversing Conv2d patch embed)
-        # This is a simplified inverse; a more complex MLP could also work
-        # self.unpatch_layer = nn.ConvTranspose2d(self.embed_dim, C,
-        #                                         kernel_size=self.patch_size,
-        #                                         stride=self.patch_size)
-
-        # Initialize positional embeddings
+        # Initialize weights
         nn.init.trunc_normal_(self.pos_embed, std=.02)
         nn.init.trunc_normal_(self.temporal_embed, std=.02)
-        nn.init.trunc_normal_(self.decoder_query_embed, std=.02)
-        nn.init.trunc_normal_(self.decoder_temporal_embed, std=.02)
-        self.apply(self._init_weights) # Initialize other weights
+        self.apply(self._init_weights)
         
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             nn.init.trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
+            if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
             
-    def forward(self, x, meta=None):
+    def _embed_frame(self, frame, t_step):
+        """Embeds a single frame (B, C, H, W) at time step t_step."""
+        B, C, H, W = frame.shape
+        N = self.num_patches
+        D = self.embed_dim
+
+        padding = get_padding_2d((H, W), self.patch_size)
+        frame_padded = F.pad(frame, padding) # (B, C, H_pad, W_pad)
+
+        # Patch embed -> Flatten -> Permute
+        patch_emb = self.patch_embed(frame_padded).flatten(2).permute(0, 2, 1) # (B, N, D)
+
+        # Add spatial embedding
+        patch_emb_spat = patch_emb + self.pos_embed # (B, N, D)
+
+        # Add temporal embedding for the given step
+        patch_emb_spat_temp = patch_emb_spat + self.temporal_embed[:, t_step, :].unsqueeze(1) # (B, N, D)
+
+        # Reshape for sequence concatenation: (B, 1*N, D)
+        return patch_emb_spat_temp.view(B, N, D).reshape(B, 1 * N, D)
+    
+    def _generate_square_subsequent_mask(self, sz, device):
+        """Generates causal mask for sz x sz."""
+        mask = (torch.triu(torch.ones(sz, sz, device=device)) == 1).transpose(0, 1)
+        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        return mask
+    
+    def _predict_frame_from_embedding(self, embedding):
+        """Predicts a frame (B, C, H, W) from the Transformer output embedding (B, D)."""
+        B, D = embedding.shape
+        N = self.num_patches
+        C = 2 # Assuming C=2
+        H, W = self.input_height, self.input_width
+        P = self.patch_size
+        grid_H, grid_W = self.grid_size
+
+        # 1. Project D -> N*D
+        projected_patches = self.prediction_head_mlp(embedding) # (B, N*D)
+
+        # 2. Reshape to (B, N, D)
+        patch_embeddings = projected_patches.view(B, N, D)
+
+        # 3. Project each patch D -> P*P*C
+        # Input (B, N, D) -> Reshape (B*N, D) -> Linear -> (B*N, P*P*C)
+        patch_pixels_flat = self.patch_projection(patch_embeddings.view(-1, D)) # (B*N, P*P*C)
+
+        # 4. Unpatch: Reshape and permute to form image grid
+        # -> (B, N, P*P*C)
+        patch_pixels_flat = patch_pixels_flat.view(B, N, -1)
+        # -> (B, grid_H, grid_W, P*P*C)
+        patch_pixels_grid = patch_pixels_flat.view(B, grid_H, grid_W, P*P*C)
+        # -> (B, grid_H, grid_W, P, P, C)
+        patch_pixels_6d = patch_pixels_grid.view(B, grid_H, grid_W, P, P, C)
+        # -> Permute (B, C, grid_H, P, grid_W, P)
+        patch_pixels_perm = patch_pixels_6d.permute(0, 5, 1, 3, 2, 4)
+        # -> Reshape (B, C, H_pad, W_pad)
+        frame_padded = patch_pixels_perm.reshape(B, C, self.padded_H, self.padded_W)
+
+        # 5. Crop padding
+        padding = get_padding_2d((H, W), P)
+        crop_h_start = padding[2]; crop_h_end = self.padded_H - padding[3]
+        crop_w_start = padding[0]; crop_w_end = self.padded_W - padding[1]
+        frame = frame_padded[:, :, crop_h_start:crop_h_end, crop_w_start:crop_w_end]
+
+        return frame # (B, C, H, W) 
+            
+    def forward(self, x, labels=None, meta=None):
         """
-        Forward pass through the Transformer.
-        x shape: (batch, input_seq_len, channels=2, height, width)
+        Autoregressive forward pass. Uses teacher forcing during training.
+
+        Args:
+            x (torch.Tensor): Input frames (B, T_in, C, H, W). Assumes T_in=1 for now.
+            labels (torch.Tensor, optional): Ground truth labels (B, T_out, C, H, W).
+                                            Used for teacher forcing during training.
+        Returns:
+            Tuple[torch.Tensor, None]: Predicted sequence (B, T_out, C, H, W), None
         """
         B, T_in, C, H, W = x.shape
-        
-        # --- Input Processing ---
-        # 1. Pad input to be divisible by patch size
-        padding = get_padding_2d((H, W), self.patch_size)
-        x_padded = F.pad(x.view(B * T_in, C, H, W), padding, mode='constant', value=0)
-        # x_padded shape: (B * T_in, C, padded_H, padded_W)
-
-        # 2. Patch Embedding
-        # Input: (B * T_in, C, padded_H, padded_W)
-        # Output: (B * T_in, embed_dim, grid_H, grid_W)
-        x_patch = self.patch_embed(x_padded)
-        _, D, grid_H, grid_W = x_patch.shape
-        N = grid_H * grid_W # Number of patches
-
-        # 3. Flatten patches and add positional embeddings
-        # Output: (B * T_in, embed_dim, N) -> (B * T_in, N, embed_dim)
-        x_patch_flat = x_patch.flatten(2).permute(0, 2, 1)
-
-        # Add spatial positional embedding (broadcasts)
-        # Need shape (1, N, D)
-        x_patch_pos = x_patch_flat + self.pos_embed # (B*T_in, N, D)
-
-        # Reshape to include time dimension for temporal embedding
-        # Output: (B, T_in, N, D)
-        x_time = x_patch_pos.view(B, T_in, N, D)
-
-        # Add temporal positional embedding (broadcasts)
-        # Need shape (1, T_in, 1, D) -> use slicing
-        x_time_pos = x_time + self.temporal_embed[:, :T_in, :].unsqueeze(2)
-
-        # Flatten time and patch dimensions for Transformer input
-        # Output: (B, T_in * N, D)
-        transformer_input = x_time_pos.view(B, T_in * N, D)
-
-        # --- Transformer Encoder ---
-        # Input shape needs to be (batch, seq, feature) for batch_first=True
-        # Output: (B, T_in * N, D)
-        memory = self.transformer_encoder(transformer_input)
-
-        # --- Transformer Decoder ---
-        # Prepare decoder query input
-        # Input: (1, T_out, D) -> repeat for batch -> (B, T_out, D)
-        # T_out is self.seq_len (the desired output sequence length)
-        decoder_input = self.decoder_query_embed.repeat(B, 1, 1)
-        decoder_input = decoder_input + self.decoder_temporal_embed
-
-        # Decoder expects target, memory. Both (batch, seq, feature)
-        # Output: (B, T_out, D)
-        decoder_output = self.transformer_decoder(tgt=decoder_input, memory=memory)
-
-        B, T_out = decoder_output.shape[0], decoder_output.shape[1]
+        T_out = self.seq_len
+        N = self.num_patches
         D = self.embed_dim
-        C = 2 # Assuming C=2 from context
-        N = self.num_patches # N = grid_H * grid_W = 121
+        device = x.device
 
-        # --- Prediction Head (Revised) ---
-        # 1. Project frame embeddings (D) to all patch embeddings (N*D)
-        # Input: (B, T_out, D)
-        projected_to_all_patches = self.prediction_head_mlp(decoder_output) # Output: (B, T_out, N * D)
+        # Assert T_in == 1 for simplicity in this implementation
+        if T_in != 1 and self.t_in_for_pos_embed != T_in:
+             print(f"[Warning] T_in={T_in} but expecting {self.t_in_for_pos_embed}. Adjust config/model if needed.")
+             # For now, proceed assuming T_in=1 for embedding indexing logic
+             T_in = 1 # Override T_in for indexing consistency if mismatch
 
-        # 2. Reshape to separate the patch dimension
-        # Output: (B, T_out, N, D)
-        patch_embeddings = projected_to_all_patches.view(B, T_out, N, D)
+        if self.training and labels is not None:
+            # --- Teacher Forcing during Training ---
+            # 1. Prepare Input Sequence
+            target_input_frames = torch.cat([x, labels[:, :-1, ...]], dim=1) # (B, T_out, C, H, W)
+            T = target_input_frames.shape[1] # T = T_out (assuming T_in=1)
 
-        # 3. Project each patch's embedding (D) to its flattened pixels (P*P*C)
-        # Apply linear layer to the last dimension (D)
-        # Input: (B, T_out, N, D)
-        # To apply linear efficiently, reshape: (B * T_out * N, D)
-        pred_patches_flat = self.patch_projection(patch_embeddings.view(-1, D)) # Output: (B * T_out * N, P*P*C)
+            # 2. Embed Sequence -> full_seq_embeddings (B, T*N, D)
+            embedded_tokens_list = []
+            for t in range(T):
+                # _embed_frame uses parameters (patch_embed, pos_embed, temporal_embed)
+                embedded_tokens_list.append(self._embed_frame(target_input_frames[:, t, ...], t))
+            full_seq_embeddings = torch.cat(embedded_tokens_list, dim=1) # Concatenation should be fine
+            # At this point, full_seq_embeddings *should* require grad due to embedding parameters.
 
-        # Reshape back to include B, T_out, N dimensions
-        # Output: (B, T_out, N, P*P*C) - THIS is the tensor needed before the problematic view
-        pred_patches_flat = pred_patches_flat.view(B, T_out, N, self.patch_size * self.patch_size * C)
+            # 3. Create Causal Mask
+            attn_mask = self._generate_square_subsequent_mask(T * N, device) # Does not require grad
 
+            # 4. Pass through Transformer Block
+            transformer_out = self.transformer_block(
+                src=full_seq_embeddings,
+                mask=attn_mask
+            ) # Uses transformer parameters. Output *should* require grad.
 
-        # --- Unpatching ---
-        # Now pred_patches_flat has shape (B, T_out, N, P*P*C)
-        # Total elements: B * T_out * N * P * P * C = 240 * 121 * 512 = 14,876,160. This matches the target.
+            # 5. Normalize
+            transformer_out_norm = self.norm(transformer_out) # Uses norm parameters. Output *should* require grad.
 
-        # Reshape for the 6D view operation: (B * T_out, N, P*P*C)
-        pred_patches_flat_reshaped = pred_patches_flat.view(B * T_out, N, -1)
+            # 6. Extract Output Embeddings for Prediction
+            # T should be T_out here
+            output_embeddings = transformer_out_norm.view(B, T, N, D)[:, :, -1, :] # Slicing/view *should* preserve grad. Output *should* require grad.
 
-        # Reshape into grid structure: (B * T_out, grid_H, grid_W, P*P*C)
-        # Note: N must be grid_H * grid_W
-        pred_patches_grid = pred_patches_flat_reshaped.view(B * T_out, self.grid_size[0], self.grid_size[1], self.patch_size * self.patch_size * C)
+            # 7. Generate Predictions
+            # _predict_frame_from_embedding uses head parameters.
+            # Input `output_embeddings.reshape(-1, D)` *should* require grad.
+            preds = self._predict_frame_from_embedding(output_embeddings.reshape(-1, D))
+            preds = preds.view(B, T_out, C, H, W) # Reshape back. `preds` *should* require grad.
 
-        # Reshape into the 6D structure needed for permuting patches
-        # Input: (B*T_out, grid_H, grid_W, P*P*C)
-        # Output: (B*T_out, grid_H, grid_W, P, P, C)
-        # This reshape requires P*P*C to be ordered correctly (e.g., C-last)
-        pred_patches = pred_patches_grid.view(B * T_out, self.grid_size[0], self.grid_size[1], self.patch_size, self.patch_size, C) # This is the problematic line (201 approx) - should work now
+            return preds, None
 
-        # Permute to put C channel first, then merge patch dimensions
-        # Output: (B * T_out, C, grid_H, P, grid_W, P)
-        pred_patches = pred_patches.permute(0, 5, 1, 3, 2, 4)
+        else:
+            # --- Autoregressive Generation during Inference ---
+            generated_frames = []
+            # Embed the initial input frame (step 0)
+            current_seq_embeddings = self._embed_frame(x[:, 0, ...], 0) # (B, 1*N, D)
 
-        # Reshape to final padded image size by merging grid and patch dims
-        # Output: (B * T_out, C, H_pad, W_pad)
-        preds_padded = pred_patches.reshape(B * T_out, C, self.padded_H, self.padded_W)
+            # Ensure no gradients are computed during generation loop
+            with torch.no_grad():
+                for t in range(T_out):
+                    # Current sequence length feeding into transformer
+                    current_seq_len_tokens = current_seq_embeddings.shape[1] # (T_in + t) * N
 
-        # --- Final Output ---
-        # Crop padding to original size
-        padding = get_padding_2d((self.input_height, self.input_width), self.patch_size)
-        crop_h_start = padding[2]
-        crop_h_end = self.padded_H - padding[3]
-        crop_w_start = padding[0]
-        crop_w_end = self.padded_W - padding[1]
+                    # Create causal mask for the current sequence length
+                    attn_mask = self._generate_square_subsequent_mask(current_seq_len_tokens, device)
 
-        preds = preds_padded[:, :, crop_h_start:crop_h_end, crop_w_start:crop_w_end]
-        # preds shape: (B * T_out, C, H, W)
+                    # Pass current sequence through Transformer
+                    transformer_out = self.transformer_block(src=current_seq_embeddings, mask=attn_mask) # (B, current_seq_len_tokens, D)
+                    transformer_out_norm = self.norm(transformer_out) # Normalize
 
-        # Reshape to final format: (B, T_out, C, H, W)
-        preds_final = preds.view(B, T_out, C, self.input_height, self.input_width)
+                    # Get embedding corresponding to the *last* input token
+                    last_embedding = transformer_out_norm[:, -1, :] # (B, D)
 
-        return preds_final, None
+                    # Predict the next frame (frame t+1 in 0-based indexing, or frame t in sequence gen)
+                    pred_frame_t = self._predict_frame_from_embedding(last_embedding) # (B, C, H, W)
+                    generated_frames.append(pred_frame_t)
+
+                    # If not the last frame to predict, embed it and append
+                    if t < T_out - 1:
+                        # Embed the predicted frame for the *next* time step index (t+1)
+                        # The temporal embedding index should be t+1 (assuming T_in=1)
+                        next_token_embeddings = self._embed_frame(pred_frame_t, t + T_in) # (B, 1*N, D)
+
+                        # Append to the sequence for the next iteration
+                        current_seq_embeddings = torch.cat([current_seq_embeddings, next_token_embeddings], dim=1)
+
+            # Stack generated frames
+            preds = torch.stack(generated_frames, dim=1) # (B, T_out, C, H, W)
+            return preds, None
     
     def objective(self, preds, labels):
         """
@@ -261,8 +305,9 @@ class WaveTransformer(WavePropModel):
         total_loss = base_loss
 
         # --- 2. Calculate the difference loss (if enabled) ---
-        diff_loss = torch.tensor(0.0, device=preds.device) # Initialize as zero tensor on correct device
         if use_diff_loss and preds.shape[1] > 1: # sequence length needs to be greater than 1
+            print("[DEBUG] Using diff loss")
+            diff_loss = torch.tensor(0.0, device=preds.device, requires_grad=True) # Initialize as zero tensor on correct device
             # Calculate differences between consecutive time steps
             # preds shape: (B, T, C, H, W)
             pred_diff = preds[:, 1:, ...] - preds[:, :-1, ...]  # Shape: (B, T-1, C, H, W)
@@ -287,7 +332,7 @@ class WaveTransformer(WavePropModel):
             # Log the lambda value used, helpful for tracking experiments
             self.log('hyperparameters/lambda_diff', lambda_diff,
                      on_step=False, on_epoch=True, sync_dist=True)
-        
+ 
         return {"loss": total_loss}
 
     def shared_step(self, batch, batch_idx):
@@ -295,19 +340,10 @@ class WaveTransformer(WavePropModel):
         Shared logic for training/validation steps using the Transformer.
         """
         samples, labels = batch # samples shape (B, T_in, C, H, W), labels shape (B, T_out, C, H, W)
-        # T_out should == self.seq_len
-
-        # Forward pass
-        preds, _ = self.forward(samples) # preds shape (B, T_out, C, H, W)
-
-        # Compute loss
-        # Ensure labels have the expected shape if T_in != T_out
-        # Loss function expects (B, T_out, ...) or flattened equivalent
-        # Our base class objective likely handles this if preds/labels match dims
+        preds, _ = self.forward(samples, labels) # preds shape (B, T_out, C, H, W)
         loss_dict = self.objective(preds, labels)
         loss = loss_dict['loss']
 
-        # Return loss and predictions (already in correct B, T, C, H, W format)
         return loss, preds
 
     def organize_testing(self, preds, batch, batch_idx, dataloader_idx=0):

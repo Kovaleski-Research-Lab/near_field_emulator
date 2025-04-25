@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 1
 
 
@@ -52,12 +52,12 @@ model:
     # - model_id: model identifier / name
 
     arch: 8
-    model_id: 'test-02'
+    model_id: 'test-03'
 
     # General Model Parameters
 
     optimizer: 'ADAM'
-    learning_rate: 1.e-3
+    learning_rate: 1.e-4
     lr_scheduler: 'CosineAnnealingLR'
     load_checkpoint: False
     objective_function: 'mse'
@@ -184,11 +184,11 @@ model:
 
     transformer:
         patch_size: 16
-        embed_dim: 768
-        depth: 12
-        num_heads: 12
+        embed_dim: 512
+        depth: 6
+        num_heads: 4
         mlp_ratio: 4.0
-        use_diff_loss: True
+        use_diff_loss: False
         lambda_diff: 0.1
 
     # General Time Series Parameters
