@@ -323,16 +323,16 @@ def get_model_type(arch: int) -> str:
     model_types = {
         0: "mlp",
         1: "cvnn",
-        2: "lstm",
-        3: "convlstm",
-        4: "ae-lstm",
-        5: "ae-convlstm",
-        6: "modelstm",
-        7: "diffusion",
-        8: "transformer",
-        9: "autoencoder",
-        00: "mlp-lstm",
-        10: "inverse"
+        2: 'inverse',
+        3: "lstm",
+        4: "convlstm",
+        5: "ae-lstm",
+        6: "ae-convlstm",
+        7: "modelstm",
+        8: "diffusion",
+        9: "transformer",
+        10: "autoencoder",
+        11: "mlp-lstm"
     }
     return model_types.get(arch, ValueError("Model type not recognized"))
 

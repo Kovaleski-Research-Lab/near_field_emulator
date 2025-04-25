@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 1
 
 
@@ -33,31 +33,31 @@ seed: 1337
 model:
     # - arch: Network Architecture
     # *** Learning a mapping from design parameters to DFT fields ***
-        # - 0: Dual MLPs - separate MLPs for real and imaginary
-        # - 1: CVNN - Complex-valued MLP
-        # - 10: Inverse Design - using CVNN. inverse_strategy (below) specifies ID method
+        # - 0: Forward - Dual MLPs - separate MLPs for real and imaginary
+        # - 1: Forward - CVNN - Complex-valued MLP
+        # - 2: Inverse Design - using CVNN. inverse_strategy (below) specifies ID method
     # *** Learning wavefront propagation ***
-        # - 2: LSTM
-        # - 3: ConvLSTM
-        # - 4: AE-LSTM - LSTM with linear autoencoder
-        # - 5: AE-ConvLSTM - ConvLSTM with convolutional autoencoder
-        # - 6: mode-LSTM - LSTM operating on a deterministic dim reduction of the fields
+        # - 3: LSTM
+        # - 4: ConvLSTM
+        # - 5: AE-LSTM - LSTM with linear autoencoder
+        # - 6: AE-ConvLSTM - ConvLSTM with convolutional autoencoder
+        # - 7: mode-LSTM - LSTM operating on a deterministic dim reduction of the fields
             # - SVD, random projection, gauss, fourier
-        # - 7: diffusion - img2video diffuser model
-        # - 8: transformer - simple attention-based approach
+        # - 8: diffusion - img2video diffuser model
+        # - 9: transformer - simple attention-based approach
     # *** Learning a reconstrutible latent representation of the fields ***
-        # - 9: Autoencoder - Used in conjunction with arch 4, 5
+        # - 10: Autoencoder - Used in conjunction with arch 4, 5
     # *** Full-wave surrogate model ***
-        # - 00: MLP-LSTM - MLP followed by LSTM
+        # - 11: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 8
-    model_id: 'test-03'
+    arch: 0
+    model_id: 'tandem-forward'
 
     # General Model Parameters
 
     optimizer: 'ADAM'
-    learning_rate: 1.e-4
+    learning_rate: 1.e-3
     lr_scheduler: 'CosineAnnealingLR'
     load_checkpoint: False
     objective_function: 'mse'
@@ -81,23 +81,23 @@ model:
     # - patch_size: patch height/width for patch wise or distributed subset
 
     mlp_real:
-        layers: [16, 32, 64]
+        layers: [64, 512]
         activation: 'relu'
 
     mlp_imag:
-        layers: [16, 32, 64]
+        layers: [64, 512]
         activation: 'relu'
 
     cvnn:
-        layers: [512, 64, 32]
+        layers: [64, 512]
         activation: 'complexrelu'
 
     dropout: 0.0
     forward_strategy: 0
     inverse_strategy: 0
     patch_size: 3
-    num_design_conf: 9
-    near_field_dim: 166
+    num_design_conf: 4
+    near_field_dim: 56
     interpolate_fields: False
 
     # LSTM Parameters
@@ -277,7 +277,7 @@ physics:
 
     #experiment type - what was varied (pillar radii, height, refractive idx, etc.)
     # for preprocessing. current support for "radius" and "refidx"
-    material_parameter: "radius"
+    material_parameter: "refidx"
 
 #--------------------------------
 #       Datamodule Params

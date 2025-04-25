@@ -32,8 +32,6 @@ class WaveForwardMLP(WaveResponseModel):
             self.strat = 'distributed'
         elif self.conf.forward_strategy == 3:
             self.strat = 'field2field'
-        elif self.conf.forward_strategy == 4:
-            self.strat = "inverse"
         else:
             raise ValueError("Approach not recognized.")
         
@@ -74,15 +72,6 @@ class WaveForwardMLP(WaveResponseModel):
                 self.mlp_real = self.build_mlp(self.output_size, self.conf.mlp_real)
                 self.mlp_imag = self.build_mlp(self.output_size, self.conf.mlp_imag)
         
-        # TODO: phase out, already handled by its own separate subclass now
-        elif self.strat == 'inverse':
-            self.output_size = 1
-            if self.name == 'cvnn':
-                self.cvnn = self.build_mlp(self.near_field_dim**2, self.conf.cvnn)
-            else:
-                self.mlp_real = self.build_mlp(self.near_field_dim**2, self.conf.mlp_real)
-                self.mlp_imag = self.build_mlp(self.near_field_dim**2, self.conf.mlp_imag)  
-        
         else:
             # Build full MLPs
             self.output_size = self.near_field_dim**2
@@ -112,13 +101,6 @@ class WaveForwardMLP(WaveResponseModel):
                 # Distributed subset approach
                 output = self.cvnn(designs_complex)
                 output = output.view(-1, self.patch_size, self.patch_size)
-            elif self.strat == 'inverse': #TODO phase out
-                # going from fields to design
-                batch_size = near_fields.size(0)
-                nf_complex = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
-                nf_complex = nf_complex.view(batch_size, -1)
-                output = self.cvnn(nf_complex)
-                return output
             else:
                 # Full approach
                 #print(f"designs_complex: {designs_complex.shape}")
@@ -167,9 +149,6 @@ class WaveForwardMLP(WaveResponseModel):
                 # Reshape to image size
                 real_output = real_output.view(-1, self.near_field_dim, self.near_field_dim)
                 imag_output = imag_output.view(-1, self.near_field_dim, self.near_field_dim)
-            elif self.strat == 'inverse': #TODO phase out
-                # this case is infeasible with dual MLPs (currently)
-                raise NotImplementedError("Dual MLPs for inverse strategy not yet implemented.")
             else:
                 # Full approach
                 real_output = self.mlp_real(designs)
@@ -208,42 +187,38 @@ class WaveForwardMLP(WaveResponseModel):
     def objective(self, batch, predictions):
         near_fields, radii = batch
         
-        if self.strat == 'inverse': #TODO phase out
-            design_loss = self.compute_loss(predictions, radii, choice=self.loss_func)
-            return {'loss': design_loss}
+        if self.name == 'cvnn':
+            labels = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
+            labels_real = labels.real
+            labels_imag = labels.imag
+            preds_real = predictions.real
+            preds_imag = predictions.imag
         else:
-            if self.name == 'cvnn':
-                labels = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
-                labels_real = labels.real
-                labels_imag = labels.imag
-                preds_real = predictions.real
-                preds_imag = predictions.imag
-            else:
-                preds_real, preds_imag = predictions
-                labels_real = near_fields[:, 0, :, :]
-                labels_imag = near_fields[:, 1, :, :]
-            
-            # Near-field loss: compute separately for real and imaginary components
-            near_field_loss_real = self.compute_loss(preds_real, labels_real, choice=self.loss_func)
-            near_field_loss_imag = self.compute_loss(preds_imag, labels_imag, choice=self.loss_func)
-            near_field_loss = near_field_loss_real + near_field_loss_imag
+            preds_real, preds_imag = predictions
+            labels_real = near_fields[:, 0, :, :]
+            labels_imag = near_fields[:, 1, :, :]
         
-            # compute other metrics for logging besides specified loss function
-            choices = {
-                'mse': None,
-                #'emd': None,
-                'ssim': None,
-                'psnr': None
-            }
-            
-            for key in choices:
-                if key != self.loss_func:
-                    loss_real = self.compute_loss(preds_real, labels_real, choice=key)
-                    loss_imag = self.compute_loss(preds_imag, labels_imag, choice=key)
-                    loss = loss_real + loss_imag
-                    choices[key] = loss
-            
-            return {"loss": near_field_loss, **choices}
+        # Near-field loss: compute separately for real and imaginary components
+        near_field_loss_real = self.compute_loss(preds_real, labels_real, choice=self.loss_func)
+        near_field_loss_imag = self.compute_loss(preds_imag, labels_imag, choice=self.loss_func)
+        near_field_loss = near_field_loss_real + near_field_loss_imag
+    
+        # compute other metrics for logging besides specified loss function
+        choices = {
+            'mse': None,
+            #'emd': None,
+            'ssim': None,
+            'psnr': None
+        }
+        
+        for key in choices:
+            if key != self.loss_func:
+                loss_real = self.compute_loss(preds_real, labels_real, choice=key)
+                loss_imag = self.compute_loss(preds_imag, labels_imag, choice=key)
+                loss = loss_real + loss_imag
+                choices[key] = loss
+        
+        return {"loss": near_field_loss, **choices}
     
     def shared_step(self, batch, batch_idx):
         near_fields, designs = batch
