@@ -22,56 +22,139 @@ class WaveForwardMLP(WaveResponseModel):
         super().__init__(model_config, fold_idx)
         
     def create_architecture(self):
-        # specific strategies for this model
+        # Determine strategy
         self.strat = None
-        if self.conf.forward_strategy == 0:
-            self.strat = 'standard'
-        elif self.conf.forward_strategy == 1:
-            self.strat = 'patch'
-        elif self.conf.forward_strategy == 2:
-            self.strat = 'distributed'
-        elif self.conf.forward_strategy == 3:
-            self.strat = 'field2field'
+        strategy_map = {
+            0: 'standard', 1: 'patch', 2: 'distributed',
+            3: 'field2field', 4: 'conv_decoder'
+        }
+        if self.conf.forward_strategy in strategy_map:
+            self.strat = strategy_map[self.conf.forward_strategy]
         else:
-            raise ValueError("Approach not recognized.")
-        
-        if self.strat == 'patch': # patch-wise
-            self.output_size = (self.patch_size)**2
-            self.num_patches_height = math.ceil(self.near_field_dim / self.patch_size)
-            self.num_patches_width = math.ceil(self.near_field_dim / self.patch_size)
-            self.num_patches = self.num_patches_height * self.num_patches_width
-            # determine whether or not to use complex-valued NN
-            # if not, we have separate MLPs, if so, we have one MLP
+            raise ValueError(f"Forward strategy {self.conf.forward_strategy} not recognized.")
+
+        # --- Convolutional Decoder Strategy ---
+        if self.strat == 'conv_decoder':
+            # --- Hardcoded Decoder Parameters ---
+            decoder_initial_channels = 16
+            decoder_initial_size = 4
+            latent_dim_required = decoder_initial_channels * (decoder_initial_size**2)
+            # Define hardcoded lists for the loop
+            decoder_channels_list = [128, 64, 32, 16]
+            decoder_kernels_list = [4, 4, 4, 4]
+            decoder_strides_list = [2, 2, 2, 2]
+            decoder_paddings_list = [1, 1, 1, 1]
+            decoder_use_batchnorm_hardcoded = True
+            decoder_activation_hardcoded = 'tanh'
+            # --- End Hardcoded Parameters ---
+
+            # --- Configuration Validation Checks ---
             if self.name == 'cvnn':
-                self.cvnn = nn.ModuleList([
-                    self.build_mlp(self.num_design_conf, self.conf['cvnn']) for _ in range(self.num_patches)
-                ])
-            else:
-                # Build MLPs for each patch
-                self.mlp_real = nn.ModuleList([
-                self.build_mlp(self.num_design_conf, self.conf['mlp_real']) for _ in range(self.num_patches)
-                ])
-                self.mlp_imag = nn.ModuleList([
-                    self.build_mlp(self.num_design_conf, self.conf['mlp_imag']) for _ in range(self.num_patches)
-                ])
-                
-        elif self.strat == 'distributed': # distributed subset
-            self.output_size = (self.patch_size)**2
-            if self.name == 'cvnn':
-                self.cvnn = self.build_mlp(self.num_design_conf, self.conf.cvnn)
-            else:
-                # build MLPs
-                self.mlp_real = self.build_mlp(self.num_design_conf, self.conf.mlp_real)
-                self.mlp_imag = self.build_mlp(self.num_design_conf, self.conf.mlp_imag)
-                
-        elif self.strat == 'field2field':
-            self.output_size = self.near_field_dim**2
-            if self.name == 'cvnn':
-                self.cvnn = self.build_mlp(self.output_size, self.conf.cvnn)
-            else:
-                self.mlp_real = self.build_mlp(self.output_size, self.conf.mlp_real)
-                self.mlp_imag = self.build_mlp(self.output_size, self.conf.mlp_imag)
-        
+                 raise ValueError("Standard ConvDecoder strategy is not compatible with 'cvnn' mode.")
+            # Check if the MLP config matches the required latent dim
+            # Using mlp_real config as per your original code
+            mlp_output_dim = self.conf.mlp_real['layers'][-1]
+            if mlp_output_dim != latent_dim_required:
+                 raise ValueError(f"Configuration error: The last layer size in 'mlp_real' config ({mlp_output_dim}) "
+                                  f"must match the hardcoded required latent dim for the decoder ({latent_dim_required})")
+            # --- End Check ---
+
+            self.output_size = self.near_field_dim**2 * 2 # Compatibility placeholder
+            
+            # 1. ---- Manually Build Initial MLP (Design Params -> Latent Vector) ----
+            print(f"Manually building initial MLP to output {latent_dim_required} features.")
+            initial_mlp_layers = []
+            in_features = self.num_design_conf # Start with number of design parameters (e.g., 4)
+            # Get MLP config details
+            mlp_hidden_layers = self.conf.mlp_real['layers'] # e.g., [32, 64, 256]
+            mlp_activation = self.conf.mlp_real['activation'] # e.g., 'relu'
+
+            for i, layer_size in enumerate(mlp_hidden_layers):
+                initial_mlp_layers.append(nn.Linear(in_features, layer_size))
+                initial_mlp_layers.append(nn.Dropout(self.conf.dropout)) # Use dropout from config
+                initial_mlp_layers.append(self.get_activation_function(mlp_activation))
+                in_features = layer_size # Update for next loop
+
+            # --- NO FINAL Linear(in_features, self.output_size) layer added here ---
+            self.initial_mlp = nn.Sequential(*initial_mlp_layers)
+
+            '''# 1. Initial MLP (Design Params -> Latent Vector)
+            # Using mlp_real config as per your original code
+            mlp_latent_conf = {
+                'layers': self.conf.mlp_real['layers'],
+                'activation': self.conf.mlp_real['activation']
+            }
+            self.initial_mlp = self.build_mlp(self.num_design_conf, mlp_latent_conf)'''
+
+            # 2. Convolutional Decoder (Latent Vector -> Field Image)
+            decoder_layers = []
+            # Reshape layer (using hardcoded values)
+            decoder_layers.append(nn.Unflatten(1, (decoder_initial_channels, decoder_initial_size, decoder_initial_size)))
+
+            # Build Upsampling Blocks using hardcoded lists
+            in_channels = decoder_initial_channels
+            num_upsample_layers = len(decoder_channels_list)
+
+            # Check list lengths (optional but good practice)
+            if not (len(decoder_channels_list) == len(decoder_kernels_list) == len(decoder_strides_list) == len(decoder_paddings_list)):
+                 raise ValueError("Internal error: Hardcoded decoder lists have different lengths.")
+            current_size = decoder_initial_size
+            for i in range(num_upsample_layers):
+                # --- Get parameters for *this* layer using index i ---
+                out_ch = decoder_channels_list[i]
+                kernel = decoder_kernels_list[i]
+                stride = decoder_strides_list[i]
+                padding = decoder_paddings_list[i]
+
+                decoder_layers.append(
+                    nn.ConvTranspose2d(
+                        in_channels,
+                        out_ch,    # Use integer from list
+                        kernel_size=kernel, # Use integer/tuple from list
+                        stride=stride,      # Use integer/tuple from list
+                        padding=padding,    # Use integer/tuple from list
+                        bias=not decoder_use_batchnorm_hardcoded
+                    )
+                )
+                current_size = (current_size - 1) * stride - 2 * padding + kernel
+                print(f" -> Layer {i+1}: {current_size}x{current_size} ({out_ch} channels)")
+
+                if decoder_use_batchnorm_hardcoded:
+                    decoder_layers.append(nn.BatchNorm2d(out_ch))
+                decoder_layers.append(self.get_activation_function(decoder_activation_hardcoded))
+                in_channels = out_ch
+
+            if current_size != 64:
+                 print(f"Warning: Expected decoder output size 64x64 before final conv, but got {current_size}x{current_size}")
+
+            # --- MODIFICATION: Final Conv2d now only maps channels, preserves 64x64 size ---
+            final_conv_kernel = 3 # Use kernel=3, padding=1 to preserve size
+            final_conv_padding = 1
+            print(f" -> Final Conv2d: kernel={final_conv_kernel}, padding={final_conv_padding} to map channels -> 2 @ {current_size}x{current_size}")
+            decoder_layers.append(
+                nn.Conv2d(
+                    in_channels, # Should be 16
+                    2,           # Output 2 channels (real, imag)
+                    kernel_size=final_conv_kernel,
+                    stride=1,
+                    padding=final_conv_padding
+                )
+            )
+            # current_size remains 64
+            print(f" -> Output Size before crop: {current_size}x{current_size} (2 channels)")
+
+            # Final Convolutional Layer to get 2 channels (Real, Imag)
+            # Assumes the loop resulted in the correct spatial size (56x56)
+            decoder_layers.append(
+                nn.Conv2d(
+                    in_channels, 2, kernel_size=3, stride=1, padding=1 # Kernel 3, Pad 1 preserves size
+                )
+            )
+
+            # Final Activation (applied AFTER the final conv layer)
+            decoder_layers.append(self.get_activation_function('tanh'))
+
+            self.decoder = nn.Sequential(*decoder_layers)
         else:
             # Build full MLPs
             self.output_size = self.near_field_dim**2
@@ -82,7 +165,13 @@ class WaveForwardMLP(WaveResponseModel):
                 self.mlp_imag = self.build_mlp(self.num_design_conf, self.conf.mlp_imag)
         
     def forward(self, designs, near_fields):
-        if self.name == 'cvnn':
+        # --- Convolutional Decoder Strategy ---
+        if self.strat == 'conv_decoder':
+            latent_vector = self.initial_mlp(designs)
+            output_field = self.decoder(latent_vector) # Shape: [batch_size, 2, 56, 56]
+            return output_field # Return single tensor with real/imag channels
+        
+        elif self.name == 'cvnn':
             # Convert designs to complex numbers
             designs_complex = torch.complex(designs, torch.zeros_like(designs))
             if self.strat == 'patch':
@@ -187,12 +276,20 @@ class WaveForwardMLP(WaveResponseModel):
     def objective(self, batch, predictions):
         near_fields, radii = batch
         
+        # Handle predictions based on output format
         if self.name == 'cvnn':
             labels = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
             labels_real = labels.real
             labels_imag = labels.imag
             preds_real = predictions.real
             preds_imag = predictions.imag
+        elif self.strat == 'conv_decoder':
+            # predictions is a single tensor (B, 2, H, W)
+            preds_real = predictions[:, 0, :, :]
+            preds_imag = predictions[:, 1, :, :]
+            labels_real = near_fields[:, 0, :, :]
+            labels_imag = near_fields[:, 1, :, :]
+        
         else:
             preds_real, preds_imag = predictions
             labels_real = near_fields[:, 0, :, :]
@@ -228,26 +325,26 @@ class WaveForwardMLP(WaveResponseModel):
     def organize_testing(self, predictions, batch, batch_idx, dataloader_idx):
         near_fields, designs = batch
         
-        # TODO phase out
-        if self.strat == 'inverse':
-            preds_combined = predictions
-            truths_combined = designs
-        
-        else:
-            if self.name == 'cvnn':
-                labels = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
-                labels_real = labels.real
-                labels_imag = labels.imag
-                preds_real = predictions.real
-                preds_imag = predictions.imag
-            else:
-                preds_real, preds_imag = predictions
-                labels_real = near_fields[:, 0, :, :]
-                labels_imag = near_fields[:, 1, :, :]
+        if self.strat == 'conv_decoder':
+            # predictions is a single tensor (B, 2, H, W)
+            preds_combined = predictions.cpu().numpy()
+        elif self.name == 'cvnn':
+            labels = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
+            labels_real = labels.real
+            labels_imag = labels.imag
+            preds_real = predictions.real
+            preds_imag = predictions.imag
             
             # collect preds and ground truths
             preds_combined = torch.stack([preds_real, preds_imag], dim=1).cpu().numpy()
-            truths_combined = torch.stack([labels_real, labels_imag], dim=1).cpu().numpy()
+        else:
+            preds_real, preds_imag = predictions
+            labels_real = near_fields[:, 0, :, :]
+            labels_imag = near_fields[:, 1, :, :]
+        
+            # collect preds and ground truths
+            preds_combined = torch.stack([preds_real, preds_imag], dim=1).cpu().numpy()
+        truths_combined = torch.stack([labels_real, labels_imag], dim=1).cpu().numpy()
             
         # Store predictions and ground truths for analysis after testing
         if dataloader_idx == 0:  # val dataloader

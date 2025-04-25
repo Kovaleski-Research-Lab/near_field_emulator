@@ -61,7 +61,7 @@ class ModelConfig(BaseModel):
     model_id: str
     optimizer: str
     learning_rate: float = 1e-3
-    lr_scheduler: Literal['CosineAnnealingLR', 'ReduceLROnPlateau']
+    lr_scheduler: Literal['CosineAnnealingLR', 'ReduceLROnPlateau', 'CosineAnnealingWarmRestarts']
     num_epochs: int = 0 
     objective_function: str = "mse"
     mcl_params: Dict[str, Any]

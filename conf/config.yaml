@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 0
+directive: 1
 deployment: 1
 
 
@@ -51,13 +51,13 @@ model:
         # - 11: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 0
-    model_id: 'tandem-forward'
+    arch: 2
+    model_id: '3b'
 
     # General Model Parameters
 
     optimizer: 'ADAM'
-    learning_rate: 1.e-3
+    learning_rate: 3.e-4
     lr_scheduler: 'CosineAnnealingLR'
     load_checkpoint: False
     objective_function: 'mse'
@@ -81,15 +81,15 @@ model:
     # - patch_size: patch height/width for patch wise or distributed subset
 
     mlp_real:
-        layers: [64, 512]
+        layers: [32, 256, 512, 2048]
         activation: 'relu'
 
     mlp_imag:
-        layers: [64, 512]
+        layers: [32, 256, 512, 2048]
         activation: 'relu'
 
     cvnn:
-        layers: [64, 512]
+        layers: [512, 64, 32]
         activation: 'complexrelu'
 
     dropout: 0.0
@@ -300,7 +300,7 @@ data:
     wv_preprocess: '3'
     wv_train: '3'
     wv_eval: '3'
-    normalize: False
+    normalize: True
     standardize: False
 
 #--------------------------------

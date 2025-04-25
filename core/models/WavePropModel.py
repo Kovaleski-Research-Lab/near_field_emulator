@@ -149,11 +149,16 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
         """
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         
-        # LR scheduler setup - 2 options
+        # LR scheduler setup - 3 options
         if self.lr_scheduler == 'CosineAnnealingLR':
             lr_scheduler = CosineAnnealingLR(optimizer, 
                                              T_max=100,
                                              eta_min=1e-6)
+            
+        elif self.lr_scheduler == 'CosineAnnealingWarmRestarts':
+            choice = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer,
+                                                                          T_0=10,
+                                                                          eta_min=1e-6)
             
         elif self.lr_scheduler == 'ReduceLROnPlateau':
             lr_scheduler = ReduceLROnPlateau(optimizer, 
