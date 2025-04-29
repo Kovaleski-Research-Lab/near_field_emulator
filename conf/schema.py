@@ -75,6 +75,7 @@ class ModelConfig(BaseModel):
     num_design_conf: int = 9
     near_field_dim: int = 166
     interpolate_fields: bool = False
+    forward_ckpt: str = '/develop/results/meep_meep/radii/cvnn/model_forward-v2/model.ckpt'
     lstm: LSTMConfig = None
     modelstm: ModesConfig = None
     convlstm: ConvLSTMConfig = None
