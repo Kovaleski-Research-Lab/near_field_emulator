@@ -1119,8 +1119,8 @@ def analyze_inverse_results(test_results, save_fig=False, save_dir=None):
         }
     
     # Compute stats for both train and valid
-    train_stats = compute_stats(test_results['train']['nf_truth'], test_results['train']['nf_pred'])
-    valid_stats = compute_stats(test_results['valid']['nf_truth'], test_results['valid']['nf_pred'])
+    train_stats = compute_stats(test_results['train']['design_truth'], test_results['train']['design_pred'])
+    valid_stats = compute_stats(test_results['valid']['design_truth'], test_results['valid']['design_pred'])
     
     # Save stats to file
     if save_fig and save_dir:

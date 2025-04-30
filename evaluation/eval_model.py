@@ -66,7 +66,8 @@ def plotting(conf, test_results, results_dir, fold_num=None):
     if model_type == "inverse":
         # Use specialized inverse model analysis
         train_stats, valid_stats = eval.analyze_inverse_results(test_results, save_fig=True, save_dir=plots_dir)
-        return train_stats, valid_stats    
+        if conf.model.inverse_strategy == 0: # results are design parameter predictions only
+            return train_stats, valid_stats    
     
     for directory in [metrics_dir, dft_dir, flipbook_dir, misc_dir]:
         os.makedirs(directory, exist_ok=True)
@@ -100,7 +101,7 @@ def plotting(conf, test_results, results_dir, fold_num=None):
                                   arch=model_type, fold_num=fold_num, fixed_scale=True)
     
     # visualize performance with animation
-    if model_type not in ['autoencoder', 'mlp', 'cvnn']:
+    if model_type not in ['autoencoder', 'mlp', 'cvnn', 'inverse']:
         print("\nGenerating field animations...")
         eval.animate_fields(test_results, dataset='valid', 
                             seq_len=conf.model.seq_len, save_dir=plots_dir)

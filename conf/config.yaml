@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 0
 deployment: 1
 
 
@@ -52,7 +52,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 2
-    model_id: '3b'
+    model_id: 'tandem'
 
     # General Model Parameters
 
@@ -94,7 +94,7 @@ model:
 
     dropout: 0.0
     forward_strategy: 0
-    inverse_strategy: 0
+    inverse_strategy: 1
     patch_size: 3
     num_design_conf: 4
     near_field_dim: 56
