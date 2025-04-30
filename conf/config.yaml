@@ -99,7 +99,7 @@ model:
     num_design_conf: 4
     near_field_dim: 56
     interpolate_fields: False
-    forward_ckpt: '/develop/results/meep_meep/radii/cvnn/model_forward-v2/model.ckpt'
+    forward_ckpt: '/develop/results/meep_meep/refractive_idx/cvnn/model_forward-BASELINE/model.ckpt'
 
     # LSTM Parameters
     # - num_layers: number of lstm layers (i.e., stacked networks)

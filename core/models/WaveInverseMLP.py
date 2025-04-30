@@ -20,23 +20,24 @@ class WaveInverseMLP(WaveResponseModel):
         # tandem init - special
         if model_config.inverse_strategy == 1: # tandem
             forward_model_ckpt_path = model_config.forward_ckpt
+            print(f"Forward model path: {forward_model_ckpt_path}")
             
             try:
-                self.forzen_forward_model = WaveForwardMLP.load_from_checkpoint(
+                # First try: Load checkpoint directly
+                self.frozen_forward_model = WaveForwardMLP.load_from_checkpoint(
                     forward_model_ckpt_path,
                     map_location='cpu'
                 )
             except Exception as e:
-                
                 print(f"Error loading forward model checkpoint: {e}")
                 print("Attempting to load hparams separately...")
                 try:
-                    # Fallback: Load hparams and instantiate manually
+                    # Second try: Load checkpoint and reconstruct config
                     ckpt = torch.load(forward_model_ckpt_path, map_location='cpu')
-                    forward_hparams = ckpt.get('hyper_parameters', {})
-                    self.frozen_forward_model = WaveForwardMLP(model_config=forward_hparams.get('conf', forward_hparams))
                     self.frozen_forward_model.load_state_dict(ckpt['state_dict'])
+                    
                 except Exception as e2:
+                    print(f"Error in fallback loading: {e2}")
                     raise RuntimeError("Failed to load forward model checkpoint using both methods")
                 
             self.frozen_forward_model.eval()
