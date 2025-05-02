@@ -64,6 +64,7 @@ class Decoder(nn.Module):
         self.method = conf.method
         self.latent_dim = conf.latent_dim
         self.initial_size = conf.spatial // (2 ** (len(channels) - 1))
+        self.spatial = conf.spatial
         self.layers = nn.ModuleList()
         
         if self.method == 'linear':
@@ -92,14 +93,14 @@ class Decoder(nn.Module):
             raise ValueError(f"Unsupported decoding method: {self.method}")
             
     def forward(self, x):
-        # x shape: [batch, input_channels, reduced_spatial, reduced_spatial]        
+        # x shape: [batch, input_channels, reduced_spatial, reduced_spatial]     
         for layer in self.layers[:-1]: # all but the last
-            #print(x.shape)
+            #print(f'latent dim shape (x): {x.shape}')   
             x = layer(x)
         x = self.layers[-1](x) # last layer w/o activation
-        if x.shape[-1] != 166:
-            x = x[:, :, :166, :166]  # Crop to exact size
-        return x # [batch, 2, 166, 166]
+        if x.shape[-1] != self.spatial:
+            x = x[:, :, :self.spatial, :self.spatial]  # Crop to exact size
+        return x # [batch, 2, xdim, ydim]
     
 class Autoencoder(LightningModule):
     def __init__(self, model_config, fold_idx=None):
@@ -157,7 +158,7 @@ class Autoencoder(LightningModule):
         return super().load_state_dict(state_dict, strict=strict)
         
     def forward(self, x):
-        # [batch, 2, 166, 166] -> x
+        # [batch, 2, xdim, ydim] -> x
         z = self.encoder(x)
         x_hat = self.decoder(z)
         return x_hat
@@ -165,7 +166,7 @@ class Autoencoder(LightningModule):
     def shared_step(self, batch, stage="train"):
         x, _ = batch
         if len(x.shape) == 5:
-            x = x[:, 0] # [batch, 2, 166, 166]
+            x = x[:, 0] # [batch, 2, xdim, ydim]
             
         x_hat = self(x)
         loss = F.mse_loss(x_hat, x)
@@ -259,17 +260,5 @@ class Autoencoder(LightningModule):
             if self.test_results[mode]['nf_pred']:
                 self.test_results[mode]['nf_pred'] = np.concatenate(self.test_results[mode]['nf_pred'], axis=0)
                 self.test_results[mode]['nf_truth'] = np.concatenate(self.test_results[mode]['nf_truth'], axis=0)
-                
-                # Handle fold index
-                #fold_suffix = f"_fold{self.fold_idx+1}" if self.fold_idx is not None else ""
-                
-                # Log or save results
-                name = "results"
-                self.logger.experiment.log_results(
-                    results=self.test_results[mode],
-                    epoch=None,
-                    mode=mode,
-                    name=name
-                )
             else:
                 print(f"No test results for mode: {mode}")

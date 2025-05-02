@@ -1,6 +1,6 @@
 # Near Field Wave Emulation
 
-Exploration of deep learning models for emulating wavefront propagation and response from metasurfaces. Supports two distinct problems: Time-series networks for modeling propagation directly, and MLP-based methods for mapping metasurface parameters to downstream fields. Currently supports the following architectures: MLP, CVNN, LSTM, Autoencoder-LSTM, Autoencoder-ConvLSTM, and LSTM with mode encoding.
+Exploration of deep learning models for emulating wavefront propagation and response from metasurfaces. Supports two distinct problems: Time-series networks for modeling propagation directly, and MLP-based methods for mapping metasurface parameters to downstream fields. Currently supports the following architectures: MLP, CVNN, LSTM, Autoencoder-LSTM, Autoencoder-ConvLSTM, LSTM with mode encoding, Transformer, and Inverse Design (naive, tandem).
 
 ## Description of Contents
 

@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 0
+directive: 2
 deployment: 1
 
 
@@ -51,8 +51,8 @@ model:
         # - 11: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 2
-    model_id: 'tandem'
+    arch: 10
+    model_id: 'refidx-v2'
 
     # General Model Parameters
 
@@ -160,11 +160,11 @@ model:
     autoencoder:
         encoder_channels: [2, 32, 64] # each step halves
         decoder_channels: [64, 32, 2] # each step doubles
-        latent_dim: 512
+        latent_dim: 256
         pretrained: True
         freeze_weights: False
         use_decoder: True
-        spatial: 166
+        spatial: 56
         method: 'conv'
 
     # Diffusion Parameters
@@ -208,7 +208,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 50 # maximum
+    num_epochs: 100 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]

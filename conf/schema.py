@@ -267,6 +267,7 @@ class MainConfig(BaseModel):
     pipeline: Optional[List[PipelineConfig]] = None
     seed: int = 1337
     
+    # This is the validator that controls results directory storage structure (meep_meep)
     @model_validator(mode="after")
     def validate_results(cls, main):
         if main.physics.material_parameter == 'radius':
@@ -276,7 +277,7 @@ class MainConfig(BaseModel):
         # need specific path for good categorization in results
         if main.model.arch == 'modelstm': # further categorize by mode encoding method
             main.paths.results = os.path.join(main.paths.results, main.model.arch, main.model.modelstm.method, main.model.io_mode, main.model.spacing_mode, f"model_{main.model.model_id}")
-        elif main.model.arch == 'mlp' or main.model.arch == 'cvnn':
+        elif main.model.arch in ['mlp', 'cvnn', 'autoencoder']:
             main.paths.results = os.path.join(main.paths.results, main.model.arch, f"model_{main.model.model_id}")
         elif main.model.arch == 'mlp-lstm':
             main.paths.results = os.path.join(main.paths.results, 'surrogate', f"model_{main.model.model_id}")

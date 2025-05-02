@@ -43,6 +43,9 @@ class RawDataLoader:
     def match_distribution(self, eval_data, train_stats):
         """
         Scale evaluation data to match statistical properties of training data
+        NOTE: This only scales the data if the loaded eval dataset is a different
+        file than the dataset loaded for training (aka we trained on wavelength 4 and
+        are now trying to evaluate on wavelength 4)
         
         Args:
             eval_data: Data to be scaled
@@ -109,10 +112,9 @@ class RawDataLoader:
             
         elif stage == "test":
             data = self._load_data(self.conf.data.wv_eval)
-            print("Before distribution matching:")
-            print(f"Eval data mean: {data['near_fields'].mean()}, std: {data['near_fields'].std()}")
-            
-            # Apply distribution matching for evaluation data
+            #print("Before distribution matching:")
+            #print(f"Eval data mean: {data['near_fields'].mean()}, std: {data['near_fields'].std()}")
+            # Apply distribution matching for evaluation data - changes only made if train wl != test wl
             data['near_fields'] = self.match_distribution(
                 data['near_fields'], 
                 self.train_stats
@@ -187,13 +189,18 @@ class RawDataLoader:
         """Based on params, return the correct dataset we'll be using"""
         if not self.conf.data.buffer:
             return os.path.join(self.conf.paths.data, 'preprocessed_data', 'dataset_nobuffer.pt')
-        elif self.conf.model.arch == 'modelstm':
-            return os.path.join(self.conf.paths.data, 'preprocessed_data', f"dataset_{self.conf.model.modelstm.method}.pt")
+        # handle naming convention for current refractive index dataset
+        if self.conf.physics.material_parameter == "refidx":
+            method_str = "_2x2"
+        else: # otherwise rn its just the radii data
+            method_str = ""
+        if self.conf.model.arch == 'modelstm':
+            return os.path.join(self.conf.paths.data, 'preprocessed_data', f"dataset_{self.conf.model.modelstm.method}{method_str}.pt")
         else:
             if wv_idx is None:
                 raise ValueError("Wavelength index is required for dataset retrieval")
             wv = str(self.conf.data.wv_dict[wv_idx]).replace('.', '')
-            return os.path.join(self.conf.paths.data, f'dataset_{wv}_2x2.pt')
+            return os.path.join(self.conf.paths.data, f'dataset_{wv}{method_str}.pt')
  
 # --------------------------------
 # Data Processing
