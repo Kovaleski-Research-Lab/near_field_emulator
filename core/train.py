@@ -10,6 +10,7 @@ import gc
 import logging
 import shutil
 import sys
+import csv
 from sklearn.model_selection import KFold
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning import Trainer, seed_everything
@@ -34,6 +35,82 @@ from conf.schema import load_config
 #--------------------------------
 # Utilities
 #--------------------------------
+
+class CSVLoggerCallback(Callback):
+    """
+    Callback that saves training metrics to a CSV file.
+    
+    This callback maintains the same CSV logging functionality as the old custom_logger.py,
+    while allowing the use of TensorBoard for visualization.
+    """
+    def __init__(self, save_dir, fold_idx=None):
+        """
+        Initialize the CSV logger callback.
+        
+        Parameters
+        ----------
+            save_dir: str
+                Directory where the CSV file will be saved
+            fold_idx: int, optional
+                Index of the current fold in cross-validation
+        """
+        super().__init__()
+        self.save_dir = save_dir
+        self.fold_idx = fold_idx
+        self.metrics = []
+        
+        # Set up the CSV file path
+        if self.fold_idx is not None:
+            os.makedirs(os.path.join(self.save_dir, 'losses'), exist_ok=True)
+            self.csv_path = os.path.join(self.save_dir, 'losses', f"fold{self.fold_idx+1}.csv")
+        else:
+            self.csv_path = os.path.join(self.save_dir, 'loss.csv')
+            
+    def on_train_epoch_end(self, trainer, pl_module):
+        """
+        Called when the train epoch ends.
+        
+        Parameters
+        ----------
+            trainer: pytorch_lightning.Trainer
+                The trainer instance
+            pl_module: pytorch_lightning.LightningModule
+                The LightningModule instance
+        """
+        # Get metrics from the current epoch
+        metrics = trainer.callback_metrics
+        if metrics:
+            # Convert metrics to dict format and add epoch
+            metrics_dict = {k: v.item() if torch.is_tensor(v) else v for k, v in metrics.items()}
+            metrics_dict['epoch'] = trainer.current_epoch
+            self.metrics.append(metrics_dict)
+            
+            # Save to CSV
+            self._save_metrics()
+            
+    def _save_metrics(self):
+        """
+        Save the collected metrics to a CSV file.
+        """
+        if not self.metrics:
+            return
+            
+        # Get all metric keys
+        last_m = {}
+        for m in self.metrics:
+            last_m.update(m)
+        metrics_keys = list(last_m.keys())
+        
+        # Ensure 'epoch' is the first column
+        if 'epoch' in metrics_keys:
+            metrics_keys.remove('epoch')
+            metrics_keys.insert(0, 'epoch')
+        
+        # Write to CSV
+        with open(self.csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=metrics_keys)
+            writer.writeheader()
+            writer.writerows(self.metrics)
 
 # pipeline function mappings
 PIPELINE_PROCESSORS = {
@@ -64,7 +141,7 @@ class CustomEarlyStopping(Callback):
     Terminates training if the monitored metric does not improve sufficiently.
     
     Note: This callback inherits from Callback (not EarlyStopping) so that
-    Lightning’s built‐in early stopping logic does not interfere.
+    Lightning's built‐in early stopping logic does not interfere.
     """
     def __init__(self, monitor='val_loss', patience=5, min_delta=0.001, mode='min', verbose=True):
         self.monitor = monitor
@@ -134,6 +211,12 @@ def configure_trainer(conf, logger, checkpoint_callback, early_stopping, progres
         default_hp_metric=False  # Disable default hp_metric logging
     )
     
+    # Create CSV logger callback
+    csv_logger = CSVLoggerCallback(
+        save_dir=conf.paths.results,
+        fold_idx=logger.fold_idx if hasattr(logger, 'fold_idx') else None
+    )
+    
     trainer_kwargs = {
         'logger': tensorboard_logger,
         'max_epochs': conf.trainer.num_epochs,
@@ -141,7 +224,7 @@ def configure_trainer(conf, logger, checkpoint_callback, early_stopping, progres
         'enable_progress_bar': True,
         'enable_model_summary': True,
         'default_root_dir': conf.paths.root,
-        'callbacks': [checkpoint_callback, early_stopping, progress_bar],
+        'callbacks': [checkpoint_callback, early_stopping, progress_bar, csv_logger],
         'check_val_every_n_epoch': conf.trainer.valid_rate,
         'num_sanity_val_steps': 1,
         'log_every_n_steps': 1

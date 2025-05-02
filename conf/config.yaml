@@ -52,7 +52,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 10
-    model_id: 'refidx-v2'
+    model_id: 'refidx-test'
 
     # General Model Parameters
 
@@ -208,7 +208,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 100 # maximum
+    num_epochs: 10 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
