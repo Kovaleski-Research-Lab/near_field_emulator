@@ -169,7 +169,15 @@ class WaveResponseModel(LightningModule, metaclass=abc.ABCMeta):
                 with torch.backends.cudnn.flags(enabled=False):
                     fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.device)
                     ssim_value = fn(preds, labels)
-                    loss = -ssim_value  # SSIM is a similarity metric
+                    #print(f'SSIM VALUE: {ssim_value}')
+                    ssim_comp = (1 - ssim_value)
+                #loss = ssim_comp
+                # Mean Squared Error
+                preds = preds.to(torch.float32).contiguous()
+                labels = labels.to(torch.float32).contiguous()
+                fn2 = torch.nn.MSELoss()
+                mse_comp = fn2(preds, labels)
+                loss = mse_comp + 0.8 * ssim_comp # compound loss
         else:
             raise ValueError(f"Unsupported loss function: {choice}")
             
@@ -215,10 +223,7 @@ class WaveResponseModel(LightningModule, metaclass=abc.ABCMeta):
         loss = loss_dict['loss']
         
         # log metrics
-        if self.loss_func == 'psnr' or self.loss_func == 'ssim': # PSNR is inverted for minimization, report true value here
-            self.log('train_loss', -loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
-        else: # mse
-            self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
         #print(f"train_psnr_recorded: {-loss}")
         other_metrics = [f"{key}" for key in loss_dict.keys() if key != 'loss' and key != self.loss_func]
         for key in other_metrics:
@@ -233,10 +238,7 @@ class WaveResponseModel(LightningModule, metaclass=abc.ABCMeta):
         loss = loss_dict['loss']
         
         # log metrics
-        if self.loss_func == 'psnr' or self.loss_func == 'ssim': # PSNR is inverted for minimization, report true value here
-            self.log('val_loss', -loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
-        else: # mse
-            self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
         #print(f"val_psnr_recorded: {-loss}")
         other_metrics = [f"{key}" for key in loss_dict.keys() if key != 'loss' and key != self.loss_func]
         for key in other_metrics:

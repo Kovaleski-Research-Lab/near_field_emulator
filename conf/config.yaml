@@ -51,13 +51,13 @@ model:
         # - 11: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 10
-    model_id: 'refidx-test'
+    arch: 9
+    model_id: 'cinco-v1'
 
     # General Model Parameters
 
     optimizer: 'ADAM'
-    learning_rate: 3.e-4
+    learning_rate: 3.e-3
     lr_scheduler: 'CosineAnnealingLR'
     load_checkpoint: False
     objective_function: 'mse'
@@ -81,19 +81,19 @@ model:
     # - patch_size: patch height/width for patch wise or distributed subset
 
     mlp_real:
-        layers: [32, 256, 512, 2048]
+        layers: [32, 64]
         activation: 'relu'
 
     mlp_imag:
-        layers: [32, 256, 512, 2048]
+        layers: [32, 64]
         activation: 'relu'
 
     cvnn:
-        layers: [512, 64, 32]
+        layers: [32, 64, 512]
         activation: 'complexrelu'
 
     dropout: 0.0
-    forward_strategy: 0
+    forward_strategy: 5
     inverse_strategy: 1
     patch_size: 3
     num_design_conf: 4
@@ -160,7 +160,7 @@ model:
     autoencoder:
         encoder_channels: [2, 32, 64] # each step halves
         decoder_channels: [64, 32, 2] # each step doubles
-        latent_dim: 256
+        latent_dim: 4
         pretrained: True
         freeze_weights: False
         use_decoder: True
@@ -208,7 +208,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 10 # maximum
+    num_epochs: 100 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
@@ -241,7 +241,8 @@ paths:
     volumes: 'nfe-data/volumes'
     library: 'code/near_field_emulator/utils/neighbors_library_allrandom.pkl'
     library_refidx: 'code/near_field_emulator/utils/library_refidx.pkl'
-    pretrained_ae: 'autoencoder/model_ae-v1/'
+    #pretrained_ae: 'autoencoder/model_ae-v1/' # for AE-LSTM models
+    pretrained_ae: 'refractive_idx/autoencoder/model_refidx-v2/'
     pretrained_mlp: 'surrogate/model_BASELINE/mlp/'
     pretrained_lstm: 'mlp/model_net2B-BASELINE/'
     mlp_results: 'mlp/model_BASELINE/'

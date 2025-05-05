@@ -152,7 +152,7 @@ class RawDataLoader:
         return data
     
     def _load_data(self, wv_idx):
-        if self.conf.model.arch == 'modelstm':
+        if self.conf.model.arch == 'modelstm' or (self.conf.model.forward_strategy == 6 and self.conf.physics.material_parameter == 'refidx'):
             print(f"Loading data from datapath for wavelength: {wv_idx}...")
             datapath = self._get_datapath()
             data = torch.load(datapath, weights_only=True)
@@ -192,10 +192,12 @@ class RawDataLoader:
         # handle naming convention for current refractive index dataset
         if self.conf.physics.material_parameter == "refidx":
             method_str = "_2x2"
+            if self.conf.model.forward_strategy == 6:
+                return os.path.join(self.conf.paths.data, f"dataset_{self.conf.model.modelstm.method}{method_str}.pt")
         else: # otherwise rn its just the radii data
             method_str = ""
         if self.conf.model.arch == 'modelstm':
-            return os.path.join(self.conf.paths.data, 'preprocessed_data', f"dataset_{self.conf.model.modelstm.method}{method_str}.pt")
+            return os.path.join(self.conf.paths.data, f"dataset_{self.conf.model.modelstm.method}{method_str}.pt")
         else:
             if wv_idx is None:
                 raise ValueError("Wavelength index is required for dataset retrieval")
@@ -330,7 +332,7 @@ class NFDataModule(LightningDataModule):
         if not self.conf.data.buffer:
             return os.path.join(self.path_data, 'preprocessed_data', 'dataset_nobuffer.pt')
         elif self.conf.model.arch == 'modelstm':
-            return os.path.join(self.path_data, 'preprocessed_data', f"dataset_{self.conf.model.modelstm.method}.pt")
+            return os.path.join(self.path_data, f"dataset_{self.conf.model.modelstm.method}.pt")
         else:
             if wv_idx is None:
                 raise ValueError("Wavelength index is required for dataset retrieval")
@@ -770,7 +772,7 @@ def preprocess_svd_data(data, conf):
     full_svd_params = data['near_fields']
     
     P = modes.select_top_k(full_svd_params['Vh'].permute(1, 0), conf.model.modelstm.k)
-    og_datapath = os.path.join(conf.paths.data, 'preprocessed_data', f"dataset_155.pt")
+    og_datapath = os.path.join(conf.paths.data, f"dataset_155.pt")
     og_data = torch.load(og_datapath, weights_only=True)
     combined = modes.encode_dataset(og_data['near_fields'], P, full_svd_params['mean_vec'])
     combined = combined.permute(0, 1, 3, 2).unsqueeze(2) # [samples, 2, 1, k, 63]
@@ -805,6 +807,7 @@ def preprocess_svd_data(data, conf):
     
     # update the data
     data['near_fields'] = combined
+    data['refidx'] = og_data['refidx']
     data['tag'] = og_data['tag']
     
     return data, P, full_svd_params['mean_vec']

@@ -536,7 +536,7 @@ def encode_modes(data, config):
     return data
 
 def run(config):
-    datasets_path = os.path.join(config.paths.data, 'preprocessed_data')
+    datasets_path = os.path.join(config.paths.data)
     if config.directive == 7: # encoding
         # grab the original preprocessed data
         full_data = torch.load(os.path.join(datasets_path, f'dataset_155.pt'), weights_only=True)

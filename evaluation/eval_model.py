@@ -16,9 +16,8 @@ warnings.filterwarnings("ignore")
 sys.path.append('../')
 import evaluation.evaluation as eval
 import evaluation.inference as inference
-import utils.model_loader as model_loader
-import utils.mapping as mapping
-from core import datamodule, custom_logger, train, modes
+from utils import model_loader, mapping, callbacks
+from core import datamodule, train, modes
 from core.datamodule import MLPProcessor, TemporalProcessor
 from conf.schema import load_config
 
@@ -134,7 +133,7 @@ def evaluate_model(model_instance, data_module, conf, phase_name):
         verbose=True
     )
     
-    early_stopping = train.CustomEarlyStopping(
+    early_stopping = callbacks.CustomEarlyStopping(
         monitor='val_loss',
         patience=conf.trainer.patience,
         min_delta=conf.trainer.min_delta,
@@ -142,7 +141,7 @@ def evaluate_model(model_instance, data_module, conf, phase_name):
         verbose=True
     )
     
-    progress_bar = train.CustomProgressBar()
+    progress_bar = callbacks.CustomProgressBar()
     
     # Reset test results
     model_instance.test_results = {
@@ -253,7 +252,7 @@ def single_model_eval(conf, data_module=None):
         verbose=True
     )
 
-    early_stopping = train.CustomEarlyStopping(
+    early_stopping = callbacks.CustomEarlyStopping(
         monitor='val_loss',
         patience=conf.trainer.patience,
         min_delta=conf.trainer.min_delta,
@@ -261,7 +260,7 @@ def single_model_eval(conf, data_module=None):
         verbose=True
     )
 
-    progress_bar = train.CustomProgressBar()
+    progress_bar = callbacks.CustomProgressBar()
     
     # ensure test results are empty so we can populate them
     model_instance.test_results = {'train': {'nf_pred': [], 'nf_truth': []},

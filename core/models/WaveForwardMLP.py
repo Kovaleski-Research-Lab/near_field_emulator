@@ -11,6 +11,7 @@ import math
 # Import: Custom Python Libraries
 #--------------------------------
 from .WaveResponseModel import WaveResponseModel
+from .autoencoder import Encoder, Decoder
 
 sys.path.append("../")
 
@@ -26,7 +27,7 @@ class WaveForwardMLP(WaveResponseModel):
         self.strat = None
         strategy_map = {
             0: 'standard', 1: 'patch', 2: 'distributed',
-            3: 'field2field', 4: 'conv_decoder'
+            3: 'field2field', 4: 'conv_decoder', 5: 'ae', 6: 'pca'
         }
         if self.conf.forward_strategy in strategy_map:
             self.strat = strategy_map[self.conf.forward_strategy]
@@ -79,7 +80,7 @@ class WaveForwardMLP(WaveResponseModel):
             self.initial_mlp = nn.Sequential(*initial_mlp_layers)
 
             '''# 1. Initial MLP (Design Params -> Latent Vector)
-            # Using mlp_real config as per your original code
+            # Using mlp_real config
             mlp_latent_conf = {
                 'layers': self.conf.mlp_real['layers'],
                 'activation': self.conf.mlp_real['activation']
@@ -155,6 +156,49 @@ class WaveForwardMLP(WaveResponseModel):
             decoder_layers.append(self.get_activation_function('tanh'))
 
             self.decoder = nn.Sequential(*decoder_layers)
+        elif self.strat == 'ae':
+            # Load pretrained autoencoder
+            dirpath = '/develop/results/meep_meep/refractive_idx/autoencoder/model_spatial-test-mcl05-k5/'
+            checkpoint = torch.load(dirpath + "model.ckpt")
+            
+            # Initialize encoder and decoder
+            self.encoder = Encoder(self.conf.autoencoder.encoder_channels, conf=self.conf.autoencoder)
+            self.decoder = Decoder(self.conf.autoencoder.decoder_channels, conf=self.conf.autoencoder)
+            
+            # Load pretrained weights
+            encoder_state_dict = {}
+            decoder_state_dict = {}
+            for key, value in checkpoint['state_dict'].items():
+                if key.startswith('encoder'):
+                    encoder_state_dict[key.replace('encoder.', '')] = value
+                elif key.startswith('decoder'):
+                    decoder_state_dict[key.replace('decoder.', '')] = value
+            
+            self.encoder.load_state_dict(encoder_state_dict)
+            self.decoder.load_state_dict(decoder_state_dict)
+            
+            # Freeze encoder and decoder weights
+            for param in self.encoder.parameters():
+                param.requires_grad = False
+            for param in self.decoder.parameters():
+                param.requires_grad = False
+            
+            # Build MLP to predict latent representation
+            self.output_size = self.conf.autoencoder.latent_dim ** 2
+            # Use a specialized MLP for latent space prediction
+            self.mlp_ae = nn.Sequential(
+                nn.Linear(self.num_design_conf, 256),
+                nn.LayerNorm(256),
+                nn.ReLU(),
+                nn.Dropout(0.1),
+                nn.Linear(256, 512),
+                nn.LayerNorm(512),
+                nn.ReLU(),
+                nn.Dropout(0.1),
+                nn.Linear(512, self.conf.autoencoder.latent_dim ** 2)
+            )
+            self.mlp_real = self.build_mlp(self.num_design_conf, self.conf.mlp_real)
+            self.mlp_imag = self.build_mlp(self.num_design_conf, self.conf.mlp_imag)
         else:
             # Build full MLPs
             self.output_size = self.near_field_dim**2
@@ -170,6 +214,22 @@ class WaveForwardMLP(WaveResponseModel):
             latent_vector = self.initial_mlp(designs)
             output_field = self.decoder(latent_vector) # Shape: [batch_size, 2, 56, 56]
             return output_field # Return single tensor with real/imag channels
+        
+        elif self.strat == 'ae':
+            # Encode the near fields to latent space
+            with torch.no_grad():
+                encoded_fields = self.encoder(near_fields)
+            
+            # forward pass through the latent MLP
+            #latent_preds = self.mlp_ae(designs)
+            latent_preds_real = self.mlp_real(designs)
+            latent_preds_imag = self.mlp_imag(designs)
+            latent_preds_real = latent_preds_real.view(-1, self.conf.autoencoder.latent_dim, self.conf.autoencoder.latent_dim)
+            latent_preds_imag = latent_preds_imag.view(-1, self.conf.autoencoder.latent_dim, self.conf.autoencoder.latent_dim)
+            latent_preds = [latent_preds_real, latent_preds_imag]
+            
+            # Return both predictions and encoded labels in latent space
+            return latent_preds, encoded_fields
         
         elif self.name == 'cvnn':
             # Convert designs to complex numbers
@@ -276,47 +336,88 @@ class WaveForwardMLP(WaveResponseModel):
     def objective(self, batch, predictions):
         near_fields, radii = batch
         
-        # Handle predictions based on output format
-        if self.name == 'cvnn':
-            labels = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
-            labels_real = labels.real
-            labels_imag = labels.imag
-            preds_real = predictions.real
-            preds_imag = predictions.imag
-        elif self.strat == 'conv_decoder':
-            # predictions is a single tensor (B, 2, H, W)
-            preds_real = predictions[:, 0, :, :]
-            preds_imag = predictions[:, 1, :, :]
+        if self.strat == 'ae':
+            # Get predictions and encoded labels in latent space
+            latent_preds, encoded_labels = predictions
+            preds_real = latent_preds[0]
+            preds_imag = latent_preds[1]
+            #print(preds_real.shape)
+            labels_real = encoded_labels[:, 0, :, :]
+            labels_imag = encoded_labels[:, 1, :, :]
+            #print(f"preds_real shape: {preds_real.shape}")
+            #print(f"labels_real shape: {labels_real.shape}")
+            # Compute loss directly in latent space
+            #latent_loss = self.compute_loss(latent_preds, encoded_labels, choice=self.loss_func)
+            # DECODER STUFF
+            preds_combined = torch.stack([preds_real, preds_imag], dim=1)
+            preds_combined = self.decoder(preds_combined)
+            preds_real = preds_combined[:, 0, :, :]
+            preds_imag = preds_combined[:, 1, :, :]
             labels_real = near_fields[:, 0, :, :]
             labels_imag = near_fields[:, 1, :, :]
-        
+            
+            # Near-field loss: compute separately for real and imaginary components
+            near_field_loss_real = self.compute_loss(preds_real, labels_real, choice=self.loss_func)
+            near_field_loss_imag = self.compute_loss(preds_imag, labels_imag, choice=self.loss_func)
+            latent_loss = near_field_loss_real + near_field_loss_imag
+            
+            # compute other metrics for logging
+            choices = {
+                'mse': None,
+                'ssim': None,
+                'psnr': None
+            }
+            
+            for key in choices:
+                if key != self.loss_func:
+                    loss_real = self.compute_loss(preds_real, labels_real, choice=key)
+                    loss_imag = self.compute_loss(preds_imag, labels_imag, choice=key)
+                    loss = loss_real + loss_imag
+                    #loss = self.compute_loss(latent_preds, encoded_labels, choice=key)
+                    choices[key] = loss
+            
+            return {"loss": latent_loss, **choices}
         else:
-            preds_real, preds_imag = predictions
-            labels_real = near_fields[:, 0, :, :]
-            labels_imag = near_fields[:, 1, :, :]
+            # Handle predictions based on output format
+            if self.name == 'cvnn' and self.strat != 'ae':
+                labels = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])
+                labels_real = labels.real
+                labels_imag = labels.imag
+                preds_real = predictions.real
+                preds_imag = predictions.imag
+            elif self.strat == 'conv_decoder':
+                # predictions is a single tensor (B, 2, H, W)
+                preds_real = predictions[:, 0, :, :]
+                preds_imag = predictions[:, 1, :, :]
+                labels_real = near_fields[:, 0, :, :]
+                labels_imag = near_fields[:, 1, :, :]
+            else:
+                preds_real, preds_imag = predictions
+                labels_real = near_fields[:, 0, :, :]
+                labels_imag = near_fields[:, 1, :, :]
+            
+            # Near-field loss: compute separately for real and imaginary components
+            near_field_loss_real = self.compute_loss(preds_real, labels_real, choice=self.loss_func)
+            near_field_loss_imag = self.compute_loss(preds_imag, labels_imag, choice=self.loss_func)
+            near_field_loss = near_field_loss_real + near_field_loss_imag
         
-        # Near-field loss: compute separately for real and imaginary components
-        near_field_loss_real = self.compute_loss(preds_real, labels_real, choice=self.loss_func)
-        near_field_loss_imag = self.compute_loss(preds_imag, labels_imag, choice=self.loss_func)
-        near_field_loss = near_field_loss_real + near_field_loss_imag
-    
-        # compute other metrics for logging besides specified loss function
-        choices = {
-            'mse': None,
-            #'emd': None,
-            'ssim': None,
-            'psnr': None
-        }
+            # compute other metrics for logging besides specified loss function
+            choices = {
+                'mse': None,
+                #'emd': None,
+                'ssim': None,
+                'psnr': None
+            }
+            
+            for key in choices:
+                if key != self.loss_func:
+                    loss_real = self.compute_loss(preds_real, labels_real, choice=key)
+                    loss_imag = self.compute_loss(preds_imag, labels_imag, choice=key)
+                    loss = loss_real + loss_imag
+                    choices[key] = loss
+            
+            return {"loss": near_field_loss, **choices}
         
-        for key in choices:
-            if key != self.loss_func:
-                loss_real = self.compute_loss(preds_real, labels_real, choice=key)
-                loss_imag = self.compute_loss(preds_imag, labels_imag, choice=key)
-                loss = loss_real + loss_imag
-                choices[key] = loss
-        
-        return {"loss": near_field_loss, **choices}
-    
     def shared_step(self, batch, batch_idx):
         near_fields, designs = batch
         preds = self.forward(designs, near_fields)
@@ -337,6 +438,20 @@ class WaveForwardMLP(WaveResponseModel):
             
             # collect preds and ground truths
             preds_combined = torch.stack([preds_real, preds_imag], dim=1).cpu().numpy()
+        elif self.strat == 'ae':
+            preds, encoded_fields = predictions
+            preds_real = preds[0]
+            preds_imag = preds[1]
+            # Keep as tensor for decoder
+            preds_combined = torch.stack([preds_real, preds_imag], dim=1)
+            # Pass through decoder while still a tensor
+            preds_combined = self.decoder(preds_combined)
+            # Convert to numpy after decoder processing
+            preds_combined = preds_combined.cpu().numpy()
+            labels_real = near_fields[:, 0, :, :]
+            labels_imag = near_fields[:, 1, :, :]
+            
+
         else:
             preds_real, preds_imag = predictions
             labels_real = near_fields[:, 0, :, :]

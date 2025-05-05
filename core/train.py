@@ -182,14 +182,14 @@ def train_phase(conf, data_module, phase_name, custom_processor=None, fold_idx=N
         filename=f'model',
         save_top_k=1,
         monitor='val_loss',
-        mode='min' if conf.model.objective_function == 'mse' else 'max',
+        mode='min', # if conf.model.objective_function == 'mse' else 'max',
         verbose=False
     )
     early_stopping = callbacks.CustomEarlyStopping(
         monitor='val_loss',
         patience=conf.trainer.patience,
         min_delta=conf.trainer.min_delta,
-        mode='min' if conf.model.objective_function == 'mse' else 'max',
+        mode='min', # if conf.model.objective_function == 'mse' else 'max',
         verbose=True
     )
     progress_bar = callbacks.CustomProgressBar(fold_idx, None) if fold_idx is not None else callbacks.CustomProgressBar()
@@ -281,7 +281,7 @@ def train_once(conf, data_module):
         filename=filename,
         save_top_k=1,
         monitor='val_loss',
-        mode='min' if conf.model.objective_function == 'mse' else 'max',
+        mode='min', # if conf.model.objective_function == 'mse' else 'max',
         verbose=False
     )
 
@@ -289,7 +289,7 @@ def train_once(conf, data_module):
         monitor='val_loss',
         patience=conf.trainer.patience,
         min_delta=conf.trainer.min_delta,
-        mode='min' if conf.model.objective_function == 'mse' else 'max',
+        mode='min', # if conf.model.objective_function == 'mse' else 'max',
         verbose=True
     )
 
@@ -338,7 +338,7 @@ def train_with_cross_validation(conf, data_module):
             filename=filename,
             save_top_k=1,
             monitor='val_loss',
-            mode='min' if conf.model.objective_function == 'mse' else 'max',
+            mode='min', # if conf.model.objective_function == 'mse' else 'max',
             verbose=True
         )
         
@@ -346,7 +346,7 @@ def train_with_cross_validation(conf, data_module):
             monitor='val_loss',
             patience=conf.trainer.patience,
             min_delta=conf.trainer.min_delta,
-            mode='min' if conf.model.objective_function == 'mse' else 'max',
+            mode='min', #if conf.model.objective_function == 'mse' else 'max',
             verbose=True
         )
 

@@ -5,6 +5,9 @@ from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 import numpy as np
 from torchmetrics import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
+from torchmetrics.functional.image import structural_similarity_index_measure as ssim
+from skimage.metrics import structural_similarity as ssim
+import cv2
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 
 class Encoder(nn.Module):
@@ -17,42 +20,41 @@ class Encoder(nn.Module):
         self.layers = nn.ModuleList()
         current_channels = channels[0]
 
-        if self.method == 'linear': # lstm
-            # flatten and map up linearly
-            flattened_size = conf.spatial * conf.spatial * 2
-            self.layers = nn.Sequential(
-                nn.Flatten(),
-                nn.Linear(flattened_size, 2048),
-                nn.ReLU(),
-                nn.Linear(2048, 1024),
-                nn.ReLU(),
-                nn.Linear(1024, self.latent_dim)
-            )
-            current_size = self.latent_dim
-                
-        elif self.method == 'conv': #convlstm
+        if self.method == 'conv':
             current_size = conf.spatial
-            # Standard downsampling approach
-            for i in range(len(channels) - 1):
-                self.layers.extend([
-                    nn.Conv2d(channels[i], channels[i+1], 
-                              kernel_size=3, stride=2, padding=1),
-                    nn.BatchNorm2d(channels[i+1]),
-                    nn.LeakyReLU(0.2)
-                ])
-                current_size = current_size // 2
+            # Progressive spatial reduction while maintaining 2 channels
+            self.layers = nn.Sequential(
+                # First conv: 56x56 -> 28x28
+                nn.Conv2d(2, 16, kernel_size=5, stride=2, padding=2),
+                nn.BatchNorm2d(16),
+                nn.LeakyReLU(0.2),
                 
+                # Second conv: 28x28 -> 14x14
+                nn.Conv2d(16, 32, kernel_size=5, stride=2, padding=2),
+                nn.BatchNorm2d(32),
+                nn.LeakyReLU(0.2),
+                
+                # Third conv: 14x14 -> 7x7
+                nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=2),
+                nn.BatchNorm2d(64),
+                nn.LeakyReLU(0.2),
+                
+                # Final conv: 7x7 -> 3x3
+                nn.Conv2d(64, 2, kernel_size=3, stride=2, padding=1),
+                nn.BatchNorm2d(2),
+                nn.LeakyReLU(0.2)
+            )
+            
+            # Calculate final size
+            self.final_size = current_size // 16  # 56 -> 3.5 -> 3
+            self.final_channels = 2
+            
         else:
             raise ValueError(f"Unsupported encoding method: {self.method}")
             
-        self.final_size = current_size
-        self.final_channels = channels[-1]
-        
     def forward(self, x):
         # x shape [batch, channels, xdim, ydim]
-        for layer in self.layers:
-            x = layer(x)
-        # Output: [batch, final_channels, reduced_spatial, reduced_spatial]
+        x = self.layers(x)
         return x
     
 class Decoder(nn.Module):
@@ -63,44 +65,40 @@ class Decoder(nn.Module):
         self.channels = channels
         self.method = conf.method
         self.latent_dim = conf.latent_dim
-        self.initial_size = conf.spatial // (2 ** (len(channels) - 1))
+        self.initial_size = conf.spatial // 16  # 56 -> 3.5 -> 3
         self.spatial = conf.spatial
-        self.layers = nn.ModuleList()
         
-        if self.method == 'linear':
-            # flatten and map up linearly
-            flattened_size = conf.spatial * conf.spatial * 2
+        if self.method == 'conv':
+            # Progressive spatial expansion while maintaining 2 channels
             self.layers = nn.Sequential(
-                nn.Linear(self.latent_dim, 1024),
-                nn.ReLU(),
-                nn.Linear(1024, 2048),
-                nn.ReLU(),
-                nn.Linear(2048, flattened_size),
-                nn.Unflatten(1, (2, conf.spatial, conf.spatial))
+                # First deconv: 3x3 -> 7x7
+                nn.ConvTranspose2d(2, 64, kernel_size=5, stride=2, padding=2, output_padding=1),
+                nn.BatchNorm2d(64),
+                nn.LeakyReLU(0.2),
+                
+                # Second deconv: 7x7 -> 14x14
+                nn.ConvTranspose2d(64, 32, kernel_size=5, stride=2, padding=2, output_padding=1),
+                nn.BatchNorm2d(32),
+                nn.LeakyReLU(0.2),
+                
+                # Third deconv: 14x14 -> 28x28
+                nn.ConvTranspose2d(32, 16, kernel_size=5, stride=2, padding=2, output_padding=1),
+                nn.BatchNorm2d(16),
+                nn.LeakyReLU(0.2),
+                
+                # Final deconv: 28x28 -> 56x56
+                nn.ConvTranspose2d(16, 2, kernel_size=5, stride=2, padding=2, output_padding=0),
+                nn.BatchNorm2d(2),
+                nn.Tanh()  # Use tanh for final activation to bound output
             )
             
-        elif self.method == 'conv':
-            # transposed convolution upsampling
-            for i in range(len(channels) - 1):
-                self.layers.extend([
-                    nn.ConvTranspose2d(channels[i], channels[i+1],
-                                    kernel_size=4, stride=2, padding=1),
-                    nn.BatchNorm2d(channels[i+1]),
-                    nn.LeakyReLU(0.2)
-                ])
-                
-        else:
-            raise ValueError(f"Unsupported decoding method: {self.method}")
-            
     def forward(self, x):
-        # x shape: [batch, input_channels, reduced_spatial, reduced_spatial]     
-        for layer in self.layers[:-1]: # all but the last
-            #print(f'latent dim shape (x): {x.shape}')   
-            x = layer(x)
-        x = self.layers[-1](x) # last layer w/o activation
-        if x.shape[-1] != self.spatial:
-            x = x[:, :, :self.spatial, :self.spatial]  # Crop to exact size
-        return x # [batch, 2, xdim, ydim]
+        # x shape: [batch, 2, 3, 3]
+        x = self.layers(x)
+        # Ensure exact size match
+        if x.shape[-1] != self.spatial or x.shape[-2] != self.spatial:
+            x = x[:, :, :self.spatial, :self.spatial]
+        return x  # [batch, 2, 56, 56]
     
 class Autoencoder(LightningModule):
     def __init__(self, model_config, fold_idx=None):
@@ -114,6 +112,7 @@ class Autoencoder(LightningModule):
         self.decoder = Decoder(self.decoder_channels, conf=self.conf.autoencoder)
         self.learning_rate = self.conf.learning_rate
         self.lr_scheduler = self.conf.lr_scheduler
+        self.loss_func = self.conf.objective_function
         self.fold_idx = fold_idx
                 
         self.test_results = {'train': {'nf_pred': [], 'nf_truth': []},
@@ -121,9 +120,9 @@ class Autoencoder(LightningModule):
         
         # Initialize metrics
         self.train_psnr = PeakSignalNoiseRatio(data_range=1.0)
-        #self.train_ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
+        self.train_ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
         self.val_psnr = PeakSignalNoiseRatio(data_range=1.0)
-        #self.val_ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
+        self.val_ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
         
         self.save_hyperparameters()
         
@@ -156,11 +155,54 @@ class Autoencoder(LightningModule):
             state_dict = flat_state_dict
             
         return super().load_state_dict(state_dict, strict=strict)
+    
+    def compute_loss(self, preds, labels, choice):
+        """
+        Compute loss given predictions and labels.
+        """
+        if choice == 'mse':
+            # Mean Squared Error
+            preds = preds.to(torch.float32).contiguous()
+            labels = labels.to(torch.float32).contiguous()
+            fn = torch.nn.MSELoss()
+            loss = fn(preds, labels)
+        elif choice == 'emd':
+            # ignoring emd for now
+            raise NotImplementedError("Earth Mover's Distance not implemented!")
+        elif choice == 'psnr':
+            # Peak Signal-to-Noise Ratio
+            preds, labels = preds.unsqueeze(1), labels.unsqueeze(1)  # channel dim
+            fn = PeakSignalNoiseRatio(data_range=1.0).to(self.device)
+            psnr_value = fn(preds, labels)
+            loss = (1 - psnr_value)
+        elif choice == 'ssim':
+            # Structural Similarity Index
+            if preds.size(-1) < 11 or preds.size(-2) < 11:
+                loss = 0 # if the size is too small, SSIM is not defined
+            else:
+                torch.use_deterministic_algorithms(True, warn_only=True)
+                with torch.backends.cudnn.flags(enabled=False):
+                    fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.device)
+                    ssim_value = fn(preds, labels)
+                    ssim_comp = (1 - ssim_value)
+                #loss = ssim_comp
+                # Mean Squared Error
+                preds = preds.to(torch.float32).contiguous()
+                labels = labels.to(torch.float32).contiguous()
+                fn2 = torch.nn.MSELoss()
+                mse_comp = fn2(preds, labels)
+                loss = mse_comp + 0.5 * ssim_comp # compound loss
+        else:
+            raise ValueError(f"Unsupported loss function: {choice}")
+            
+        return loss
         
     def forward(self, x):
         # [batch, 2, xdim, ydim] -> x
         z = self.encoder(x)
+        #print(f"z shape (latent after encoding): {z.shape}")
         x_hat = self.decoder(z)
+        #print(f"x_hat shape (reconstruction): {x_hat.shape}")
         return x_hat
     
     def shared_step(self, batch, stage="train"):
@@ -169,17 +211,18 @@ class Autoencoder(LightningModule):
             x = x[:, 0] # [batch, 2, xdim, ydim]
             
         x_hat = self(x)
-        loss = F.mse_loss(x_hat, x)
+        #loss = F.mse_loss(x_hat, x)
+        loss = self.compute_loss(x_hat, x, choice=self.loss_func)
         
         # calculate addl metrics
         with torch.no_grad():
             psnr = self.train_psnr(x_hat, x) if stage == 'train' else self.val_psnr(x_hat, x)
-            #ssim = self.train_ssim(x_hat.unsqueeze(1), x.unsqueeze(1)) if stage == 'train' else self.val_ssim(x_hat.unsqueeze(1), x.unsqueeze(1))
+            ssim = self.train_ssim(x_hat, x) if stage == 'train' else self.val_ssim(x_hat, x)
             
         return {
             'loss': loss,
             'psnr': psnr,
-            #'ssim': ssim,
+            'ssim': ssim,
             'recon': x_hat
         }
 
@@ -190,7 +233,7 @@ class Autoencoder(LightningModule):
         # Log all metrics
         self.log('train_loss', results['loss'], prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
         self.log('train_psnr', results['psnr'], prog_bar=False, on_step=False, on_epoch=True, sync_dist=True)
-        #self.log('train_ssim', results['ssim'], prog_bar=False, on_step=False, on_epoch=True, sync_dist=True)
+        self.log('train_ssim', results['ssim'], prog_bar=False, on_step=False, on_epoch=True, sync_dist=True)
         
         return results
     
@@ -200,7 +243,7 @@ class Autoencoder(LightningModule):
         # Log all metrics
         self.log('val_loss', results['loss'], prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
         self.log('val_psnr', results['psnr'], prog_bar=False, on_step=False, on_epoch=True, sync_dist=True)
-        #self.log('val_ssim', results['ssim'], prog_bar=False, on_step=False, on_epoch=True, sync_dist=True)
+        self.log('val_ssim', results['ssim'], prog_bar=False, on_step=False, on_epoch=True, sync_dist=True)
         
         return results
         
