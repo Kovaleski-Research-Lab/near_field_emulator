@@ -191,7 +191,7 @@ class Autoencoder(LightningModule):
                 labels = labels.to(torch.float32).contiguous()
                 fn2 = torch.nn.MSELoss()
                 mse_comp = fn2(preds, labels)
-                loss = mse_comp + 0.5 * ssim_comp # compound loss
+                loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
         else:
             raise ValueError(f"Unsupported loss function: {choice}")
             

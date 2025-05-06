@@ -52,7 +52,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 9
-    model_id: 'baseline0mcl-small'
+    model_id: 'comp-ssim'
 
     # General Model Parameters
 
@@ -212,7 +212,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 100 # maximum
+    num_epochs: 1 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]

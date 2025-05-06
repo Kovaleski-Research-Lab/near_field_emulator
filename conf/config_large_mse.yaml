@@ -52,7 +52,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 9
-    model_id: 'baseline0mcl-small'
+    model_id: 'large-mse'
 
     # General Model Parameters
 
@@ -60,7 +60,7 @@ model:
     learning_rate: 1.e-4
     lr_scheduler: 'CosineAnnealingLR'
     load_checkpoint: False
-    objective_function: 'ssim'
+    objective_function: 'mse'
 
     # multi-criteria loss
     mcl_params:
@@ -188,10 +188,10 @@ model:
     # - mlp_ratio:
 
     transformer:
-        patch_size: 11
-        embed_dim: 384
-        depth: 4
-        num_heads: 8
+        patch_size: 16
+        embed_dim: 512
+        depth: 6
+        num_heads: 4
         mlp_ratio: 4.0
         use_diff_loss: False
         lambda_diff: 0.1
@@ -212,7 +212,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 100 # maximum
+    num_epochs: 75 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]

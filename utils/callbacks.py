@@ -21,6 +21,7 @@ from pytorch_lightning.callbacks.progress.tqdm_progress import Tqdm
 from pytorch_lightning.plugins.environments import SLURMEnvironment
 from pytorch_lightning.loggers import TensorBoardLogger
 from tqdm.auto import tqdm
+import pandas as pd
 
 #--------------------------------
 # Import: Custom Python Libraries
@@ -51,14 +52,15 @@ class CSVLoggerCallback(Callback):
         super().__init__()
         self.save_dir = save_dir
         self.fold_idx = fold_idx
-        self.metrics = []
+        self.csv_file = os.path.join(save_dir, 'loss.csv')
         
-        # Set up the CSV file path
-        if self.fold_idx is not None:
-            os.makedirs(os.path.join(self.save_dir, 'losses'), exist_ok=True)
-            self.csv_path = os.path.join(self.save_dir, 'losses', f"fold{self.fold_idx+1}.csv")
+        # Load existing data if file exists
+        if os.path.exists(self.csv_file):
+            self.existing_data = pd.read_csv(self.csv_file)
+            self.last_epoch = len(self.existing_data)
         else:
-            self.csv_path = os.path.join(self.save_dir, 'loss.csv')
+            self.existing_data = pd.DataFrame()
+            self.last_epoch = 0
             
     def on_train_epoch_end(self, trainer, pl_module):
         """
@@ -71,41 +73,28 @@ class CSVLoggerCallback(Callback):
             pl_module: pytorch_lightning.LightningModule
                 The LightningModule instance
         """
-        # Get metrics from the current epoch
+        # Get current metrics
         metrics = trainer.callback_metrics
-        if metrics:
-            # Convert metrics to dict format and add epoch
-            metrics_dict = {k: v.item() if torch.is_tensor(v) else v for k, v in metrics.items()}
-            metrics_dict['epoch'] = trainer.current_epoch
-            self.metrics.append(metrics_dict)
-            
-            # Save to CSV
-            self._save_metrics()
-            
-    def _save_metrics(self):
-        """
-        Save the collected metrics to a CSV file.
-        """
-        if not self.metrics:
-            return
-            
-        # Get all metric keys
-        last_m = {}
-        for m in self.metrics:
-            last_m.update(m)
-        metrics_keys = list(last_m.keys())
         
-        # Ensure 'epoch' is the first column
-        if 'epoch' in metrics_keys:
-            metrics_keys.remove('epoch')
-            metrics_keys.insert(0, 'epoch')
+        # Create new row with correct epoch number
+        new_row = {
+            'epoch': trainer.current_epoch,  # Don't add last_epoch, just use current_epoch
+            'val/base_loss': metrics.get('val/base_loss', 0).item(),
+            'val_loss': metrics.get('val_loss', 0).item(),
+            'val_psnr': metrics.get('val_psnr', 0).item(),
+            'val_ssim': metrics.get('val_ssim', 0).item(),
+            'train/base_loss': metrics.get('train/base_loss', 0).item(),
+            'train_loss': metrics.get('train_loss', 0).item(),
+            'train_psnr': metrics.get('train_psnr', 0).item(),
+            'train_ssim': metrics.get('train_ssim', 0).item()
+        }
         
-        # Write to CSV
-        with open(self.csv_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=metrics_keys)
-            writer.writeheader()
-            writer.writerows(self.metrics)
-            
+        # Append to existing data
+        self.existing_data = pd.concat([self.existing_data, pd.DataFrame([new_row])], ignore_index=True)
+        
+        # Save to CSV
+        self.existing_data.to_csv(self.csv_file, index=False)
+        
 class CustomProgressBar(TQDMProgressBar):
     """Custom progress bar that adds fold information"""
     def __init__(self, fold_idx=None, total_folds=None):

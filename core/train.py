@@ -140,72 +140,112 @@ def train_phase(conf, data_module, phase_name, custom_processor=None, fold_idx=N
     print("Formatting the dataset...")
     data_module.setup(stage='fit')
     
+    checkpoint_path = os.path.join(conf.paths.checkpoint, 'model.ckpt')
     
-    # select model instance according to the updated configuration
-    model_instance = model_loader.select_model(conf.model)
-    
-    # results dir configuration
-    save_dir = os.path.join(conf.paths.results, phase_name)
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+    # either resuming or starting anew
+    if os.path.exists(checkpoint_path) and conf.trainer.resume:
+        print(f"Resuming training from checkpoint: {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path)
         
-    if conf.trainer.load_checkpoint['mlp'] and conf.model.arch == 'mlp':
-        model_path = os.path.join(conf.paths.pretrained_mlp, 'model.ckpt')
-        model_instance.load_state_dict(torch.load(model_path)['state_dict'])
-        print(f"Loaded MLP checkpoint from {model_path}")
-        # save loss.csv if path is different
-        src_loss = os.path.join(conf.paths.pretrained_mlp, 'loss.csv')
-        dst_loss = os.path.join(save_dir, 'loss.csv')
-        if src_loss != dst_loss: # only copy if paths are different (new experiment)
-            shutil.copy(src_loss, dst_loss)
-        return model_instance
+        # Create model and load state
+        model_instance = model_loader.select_model(conf.model, fold_idx)
+        model_instance.load_state_dict(checkpoint['state_dict'])
         
-    if conf.trainer.load_checkpoint['lstm'] and (conf.model.arch in ['lstm', 'convlstm', 'ae-convlstm']):
-        model_path = os.path.join(conf.paths.pretrained_lstm, 'model.ckpt')
-        model_instance.load_state_dict(torch.load(model_path)['state_dict'])
-        print(f"Loaded LSTM checkpoint from {model_path}")
-        # save loss.csv if path is different
-        src_loss = os.path.join(conf.paths.pretrained_lstm, 'loss.csv')
-        dst_loss = os.path.join(save_dir, 'loss.csv')
-        if src_loss != dst_loss: # only copy if paths are different (new experiment)
-            shutil.copy(src_loss, dst_loss)
-        return model_instance
-    
-    logger = custom_logger.Logger(
-        save_dir=save_dir,
-        name=f"{conf.model.model_id}_{phase_name}",
-        version=0
-    )
+        # Load optimizer state if it exists
+        if 'optimizer_states' in checkpoint:
+            optimizer = torch.optim.Adam(model_instance.parameters(), lr=conf.model.learning_rate)
+            optimizer.load_state_dict(checkpoint['optimizer_states'][0])
+        
+        # Get the last epoch from checkpoint
+        last_epoch = checkpoint['epoch']
+        
+        # Configure TensorBoard logger to continue from last epoch
+        tensorboard_logger = TensorBoardLogger(
+            save_dir=conf.paths.results,
+            name='',  # Empty name to avoid extra subdirectory
+            version='',  # Empty version to avoid extra subdirectory
+            default_hp_metric=False  # Disable default hp_metric logging
+        )
+        
+        # Update checkpoint callback to continue from last epoch
+        checkpoint_callback = ModelCheckpoint(
+            dirpath=save_dir,
+            filename=f'model',
+            save_top_k=1,
+            monitor='val_loss',
+            mode='min',
+            verbose=False
+        )
+        
+        # Configure trainer with resume_from_checkpoint
+        trainer = configure_trainer(conf, tensorboard_logger, checkpoint_callback, early_stopping, progress_bar)
+        trainer.fit(model_instance, data_module, ckpt_path=checkpoint_path) 
+    else:
+        # select model instance according to the updated configuration
+        model_instance = model_loader.select_model(conf.model)
+        
+        # results dir configuration
+        save_dir = os.path.join(conf.paths.results, phase_name)
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+            
+        if conf.trainer.load_checkpoint['mlp'] and conf.model.arch == 'mlp':
+            model_path = os.path.join(conf.paths.pretrained_mlp, 'model.ckpt')
+            model_instance.load_state_dict(torch.load(model_path)['state_dict'])
+            print(f"Loaded MLP checkpoint from {model_path}")
+            # save loss.csv if path is different
+            src_loss = os.path.join(conf.paths.pretrained_mlp, 'loss.csv')
+            dst_loss = os.path.join(save_dir, 'loss.csv')
+            if src_loss != dst_loss: # only copy if paths are different (new experiment)
+                shutil.copy(src_loss, dst_loss)
+            return model_instance
+            
+        if conf.trainer.load_checkpoint['lstm'] and (conf.model.arch in ['lstm', 'convlstm', 'ae-convlstm']):
+            model_path = os.path.join(conf.paths.pretrained_lstm, 'model.ckpt')
+            model_instance.load_state_dict(torch.load(model_path)['state_dict'])
+            print(f"Loaded LSTM checkpoint from {model_path}")
+            # save loss.csv if path is different
+            src_loss = os.path.join(conf.paths.pretrained_lstm, 'loss.csv')
+            dst_loss = os.path.join(save_dir, 'loss.csv')
+            if src_loss != dst_loss: # only copy if paths are different (new experiment)
+                shutil.copy(src_loss, dst_loss)
+            return model_instance
+        
+        logger = custom_logger.Logger(
+            save_dir=save_dir,
+            name=f"{conf.model.model_id}_{phase_name}",
+            version=0
+        )
 
-    checkpoint_callback = ModelCheckpoint(
-        dirpath=save_dir,
-        filename=f'model',
-        save_top_k=1,
-        monitor='val_loss',
-        mode='min', # if conf.model.objective_function == 'mse' else 'max',
-        verbose=False
-    )
-    early_stopping = callbacks.CustomEarlyStopping(
-        monitor='val_loss',
-        patience=conf.trainer.patience,
-        min_delta=conf.trainer.min_delta,
-        mode='min', # if conf.model.objective_function == 'mse' else 'max',
-        verbose=True
-    )
-    progress_bar = callbacks.CustomProgressBar(fold_idx, None) if fold_idx is not None else callbacks.CustomProgressBar()
+        checkpoint_callback = ModelCheckpoint(
+            dirpath=save_dir,
+            filename=f'model',
+            save_top_k=1,
+            monitor='val_loss',
+            mode='min', # if conf.model.objective_function == 'mse' else 'max',
+            verbose=False
+        )
+        early_stopping = callbacks.CustomEarlyStopping(
+            monitor='val_loss',
+            patience=conf.trainer.patience,
+            min_delta=conf.trainer.min_delta,
+            mode='min', # if conf.model.objective_function == 'mse' else 'max',
+            verbose=True
+        )
+        progress_bar = callbacks.CustomProgressBar(fold_idx, None) if fold_idx is not None else callbacks.CustomProgressBar()
 
-    trainer = configure_trainer(conf, logger, checkpoint_callback, early_stopping, progress_bar)
-    
-    '''# debugging
-    print(f"checking the contents of a data_module.train_dataloader() batch...")
-    batch = next(iter(data_module.train_dataloader()))
-    item1, item2 = batch
-    
-    print(f"We're checking here in train_phase for phase_name: {phase_name}")
-    print(f"Near fields (or samples) shape: {item1.shape}")
-    print(f"Radii (or labels) shape: {item2.shape}")'''
-    
-    trainer.fit(model_instance, data_module)
+        trainer = configure_trainer(conf, logger, checkpoint_callback, early_stopping, progress_bar)
+        
+        '''# debugging
+        print(f"checking the contents of a data_module.train_dataloader() batch...")
+        batch = next(iter(data_module.train_dataloader()))
+        item1, item2 = batch
+        
+        print(f"We're checking here in train_phase for phase_name: {phase_name}")
+        print(f"Near fields (or samples) shape: {item1.shape}")
+        print(f"Radii (or labels) shape: {item2.shape}")'''
+        
+        trainer.fit(model_instance, data_module)
     
     best_model_path = checkpoint_callback.best_model_path
     if best_model_path:
@@ -261,44 +301,104 @@ def train_once(conf, data_module):
     """
     Train without cross-validation, utilizing the train/valid split originally
     established during data preprocessing (should be 80/20) 
-    The split: core/preprocess_data.py --> separate_datasets()
-    Tagged in core/datamodule.py --> load_pickle_data()
     """
-    #data_module.setup_og()
-
     model_instance = model_loader.select_model(conf.model)
-    logger = custom_logger.Logger(
-        save_dir=conf.paths.results,
-        name=conf.model.model_id,
-        version=0
-    )
+    
+    # Check for existing checkpoint
+    checkpoint_path = os.path.join(conf.paths.results, 'model.ckpt')
+    
+    if os.path.exists(checkpoint_path) and conf.trainer.resume:
+        print(f"Resuming training from checkpoint: {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path)
+        
+        # Load model state
+        model_instance.load_state_dict(checkpoint['state_dict'])
+        
+        # Load optimizer state if it exists
+        if 'optimizer_states' in checkpoint:
+            optimizer = torch.optim.Adam(model_instance.parameters(), lr=conf.model.learning_rate)
+            optimizer.load_state_dict(checkpoint['optimizer_states'][0])
+        
+        # Get the last epoch from checkpoint
+        last_epoch = checkpoint['epoch']
+        
+        # Configure TensorBoard logger to continue from last epoch
+        tensorboard_logger = TensorBoardLogger(
+            save_dir=conf.paths.results,
+            name='',  # Empty name to avoid extra subdirectory
+            version='',  # Empty version to avoid extra subdirectory
+            default_hp_metric=False  # Disable default hp_metric logging
+        )
+        
+        # Create CSV logger callback that will resume from last epoch
+        csv_logger = callbacks.CSVLoggerCallback(
+            save_dir=conf.paths.results
+        )
+        
+        # Update checkpoint callback to continue from last epoch
+        checkpoint_callback = ModelCheckpoint(
+            dirpath=conf.paths.results,
+            filename='model',
+            save_top_k=1,
+            monitor='val_loss',
+            mode='min',
+            verbose=False
+        )
+        
+        early_stopping = callbacks.CustomEarlyStopping(
+            monitor='val_loss',
+            patience=conf.trainer.patience,
+            min_delta=conf.trainer.min_delta,
+            mode='min',
+            verbose=True
+        )
+        
+        progress_bar = callbacks.CustomProgressBar()
+        
+        # Configure trainer with resume_from_checkpoint
+        trainer = configure_trainer(conf, tensorboard_logger, checkpoint_callback, early_stopping, progress_bar)
+        trainer.fit(model_instance, data_module, ckpt_path=checkpoint_path)
+        
+    else:
+        # Original training path
+        tensorboard_logger = TensorBoardLogger(
+            save_dir=conf.paths.results,
+            name='',  # Empty name to avoid extra subdirectory
+            version='',  # Empty version to avoid extra subdirectory
+            default_hp_metric=False  # Disable default hp_metric logging
+        )
+        
+        # Create new CSV logger
+        csv_logger = callbacks.CSVLoggerCallback(
+            save_dir=conf.paths.results
+        )
 
-    # Checkpoint and EarlyStopping
-    checkpoint_path = conf.paths.results
-    filename = 'model'
-    checkpoint_callback = ModelCheckpoint(
-        dirpath=checkpoint_path,
-        filename=filename,
-        save_top_k=1,
-        monitor='val_loss',
-        mode='min', # if conf.model.objective_function == 'mse' else 'max',
-        verbose=False
-    )
+        # Checkpoint and EarlyStopping
+        checkpoint_path = conf.paths.results
+        filename = 'model'
+        checkpoint_callback = ModelCheckpoint(
+            dirpath=checkpoint_path,
+            filename=filename,
+            save_top_k=1,
+            monitor='val_loss',
+            mode='min',
+            verbose=False
+        )
 
-    early_stopping = callbacks.CustomEarlyStopping(
-        monitor='val_loss',
-        patience=conf.trainer.patience,
-        min_delta=conf.trainer.min_delta,
-        mode='min', # if conf.model.objective_function == 'mse' else 'max',
-        verbose=True
-    )
+        early_stopping = callbacks.CustomEarlyStopping(
+            monitor='val_loss',
+            patience=conf.trainer.patience,
+            min_delta=conf.trainer.min_delta,
+            mode='min',
+            verbose=True
+        )
 
-    progress_bar = callbacks.CustomProgressBar()
+        progress_bar = callbacks.CustomProgressBar()
 
-    trainer = configure_trainer(conf, logger, checkpoint_callback, early_stopping, progress_bar)
+        trainer = configure_trainer(conf, tensorboard_logger, checkpoint_callback, early_stopping, progress_bar)
 
-    # Train
-    trainer.fit(model_instance, data_module)
+        # Train
+        trainer.fit(model_instance, data_module)
     
     # Save best model
     best_model_path = checkpoint_callback.best_model_path
@@ -320,41 +420,90 @@ def train_with_cross_validation(conf, data_module):
         logging.info(f"Fold {fold_idx + 1}/{n_splits}")
         #if fold_idx > 0:
         #    clear_memory()
-
-        model_instance = model_loader.select_model(conf.model, fold_idx)
         data_module.setup_fold(train_idx, val_idx)
+        model_instance = model_loader.select_model(conf.model, fold_idx)
 
-        logger = custom_logger.Logger(
-            save_dir=conf.paths.results,
-            name=f"{conf.model.model_id}_fold{fold_idx + 1}", 
-            version=0, 
-            fold_idx=fold_idx
-        )
-
-        checkpoint_path = conf.paths.results
-        filename = f'model_fold{fold_idx + 1}'
-        checkpoint_callback = ModelCheckpoint(
-            dirpath=checkpoint_path,
-            filename=filename,
-            save_top_k=1,
-            monitor='val_loss',
-            mode='min', # if conf.model.objective_function == 'mse' else 'max',
-            verbose=True
-        )
+        # Check for existing checkpoint
+        checkpoint_path = os.path.join(conf.paths.results, 'model.ckpt')
         
-        early_stopping = callbacks.CustomEarlyStopping(
-            monitor='val_loss',
-            patience=conf.trainer.patience,
-            min_delta=conf.trainer.min_delta,
-            mode='min', #if conf.model.objective_function == 'mse' else 'max',
-            verbose=True
-        )
+        if os.path.exists(checkpoint_path) and conf.trainer.resume:
+            print(f"Resuming training from checkpoint: {checkpoint_path}")
+            checkpoint = torch.load(checkpoint_path)
+            
+            # Load model state
+            model_instance.load_state_dict(checkpoint['state_dict'])
+            
+            # Load optimizer state if it exists
+            if 'optimizer_states' in checkpoint:
+                optimizer = torch.optim.Adam(model_instance.parameters(), lr=conf.model.learning_rate)
+                optimizer.load_state_dict(checkpoint['optimizer_states'][0])
+            
+            # Get the last epoch from checkpoint
+            last_epoch = checkpoint['epoch']
+            
+            # Configure TensorBoard logger to continue from last epoch
+            tensorboard_logger = TensorBoardLogger(
+                save_dir=conf.paths.results,
+                name='',  # Empty name to avoid extra subdirectory
+                version='',  # Empty version to avoid extra subdirectory
+                default_hp_metric=False  # Disable default hp_metric logging
+            )
+            
+            # Update checkpoint callback to continue from last epoch
+            checkpoint_callback = ModelCheckpoint(
+                dirpath=conf.paths.results,
+                filename='model',
+                save_top_k=1,
+                monitor='val_loss',
+                mode='min',
+                verbose=False
+            )
+            
+            early_stopping = callbacks.CustomEarlyStopping(
+                monitor='val_loss',
+                patience=conf.trainer.patience,
+                min_delta=conf.trainer.min_delta,
+                mode='min',
+                verbose=True
+            )
+            
+            progress_bar = callbacks.CustomProgressBar()
+            
+            # Configure trainer with resume_from_checkpoint
+            trainer = configure_trainer(conf, tensorboard_logger, checkpoint_callback, early_stopping, progress_bar)
+            trainer.fit(model_instance, data_module, ckpt_path=checkpoint_path)
+        else:
+            logger = custom_logger.Logger(
+                save_dir=conf.paths.results,
+                name=f"{conf.model.model_id}_fold{fold_idx + 1}", 
+                version=0, 
+                fold_idx=fold_idx
+            )
 
-        progress_bar = callbacks.CustomProgressBar(fold_idx, n_splits)
-        trainer = configure_trainer(conf, logger, checkpoint_callback, early_stopping, progress_bar)
+            checkpoint_path = conf.paths.results
+            filename = f'model_fold{fold_idx + 1}'
+            checkpoint_callback = ModelCheckpoint(
+                dirpath=checkpoint_path,
+                filename=filename,
+                save_top_k=1,
+                monitor='val_loss',
+                mode='min', # if conf.model.objective_function == 'mse' else 'max',
+                verbose=True
+            )
+            
+            early_stopping = callbacks.CustomEarlyStopping(
+                monitor='val_loss',
+                patience=conf.trainer.patience,
+                min_delta=conf.trainer.min_delta,
+                mode='min', #if conf.model.objective_function == 'mse' else 'max',
+                verbose=True
+            )
 
-        # Training
-        trainer.fit(model_instance, data_module)
+            progress_bar = callbacks.CustomProgressBar(fold_idx, n_splits)
+            trainer = configure_trainer(conf, logger, checkpoint_callback, early_stopping, progress_bar)
+
+            # Training
+            trainer.fit(model_instance, data_module)
 
         current_val_loss = checkpoint_callback.best_model_score.item()
 

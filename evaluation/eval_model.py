@@ -102,7 +102,7 @@ def plotting(conf, test_results, results_dir, fold_num=None):
     # visualize performance with animation
     if model_type not in ['autoencoder', 'mlp', 'cvnn', 'inverse']:
         print("\nGenerating field animations...")
-        eval.animate_fields(test_results, dataset='valid', 
+        eval.animate_fields(test_results, dataset='valid', sample_idx=0,
                             seq_len=conf.model.seq_len, save_dir=plots_dir)
     
     print(f"\nEvaluation complete. All results saved to: {plots_dir}")

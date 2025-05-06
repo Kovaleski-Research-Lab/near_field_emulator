@@ -10,7 +10,7 @@ from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMe
 #from torchvision.models import resnet50, resnet18, resnet34
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from pytorch_lightning import LightningModule
 import math
 import abc
@@ -123,15 +123,96 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
             fn = PeakSignalNoiseRatio(data_range=1.0).to(self._device)
             loss = fn(preds, labels)
             
-        elif choice == 'ssim':
-            # Structural Similarity Index
-            preds, labels = preds.unsqueeze(1), labels.unsqueeze(1)  # channel dim
+        # Structural Similarity Index Approaches
+        elif choice == 'ssim': # standard (full volume)
+            # Reshape to combine batch and sequence dimensions
+            B, T, C, H, W = preds.shape
+            preds_reshaped = preds.view(B*T, C, H, W)
+            labels_reshaped = labels.view(B*T, C, H, W)
+            
+            # Compute SSIM for each channel separately
             torch.use_deterministic_algorithms(True, warn_only=True)
             with torch.backends.cudnn.flags(enabled=False):
-                fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(self._device)
-                ssim_value = fn(preds, labels)
-                loss = 1 - ssim_value  # SSIM is a similarity metric
+                ssim_vals = []
+                for c in range(C):
+                    pred_c = preds_reshaped[:, c:c+1]  # Keep channel dimension
+                    label_c = labels_reshaped[:, c:c+1]
+                    fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.device)
+                    ssim_value = fn(pred_c, label_c)
+                    ssim_vals.append(ssim_value)
                 
+            # Average SSIM across channels
+            ssim_comp = 1 - torch.stack(ssim_vals).mean()
+            
+            # Add MSE component
+            mse_comp = torch.nn.MSELoss()(preds, labels)
+            loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
+        
+        elif choice == 'ssim-seq':
+            B, T, C, H, W = preds.shape
+            
+            # local SSIM computation
+            window_size = self.conf.ssim['window_size']
+            
+            # Compute SSIM for each timestep and channel
+            torch.use_deterministic_algorithms(True, warn_only=True)
+            with torch.backends.cudnn.flags(enabled=False):
+                ssim_vals = []
+                for t in range(T):
+                    pred_t = preds[:, t]  # [B, C, H, W]
+                    label_t = labels[:, t]
+                    
+                    for c in range(C):
+                        pred_c = pred_t[:, c:c+1]
+                        label_c = label_t[:, c:c+1]
+                        
+                        # Compute SSIM with specific window size
+                        fn = StructuralSimilarityIndexMeasure(
+                            data_range=1.0,
+                            kernel_size=window_size
+                        ).to(self.device)
+                        ssim_value = fn(pred_c, label_c)
+                        ssim_vals.append(ssim_value)
+            
+            ssim_comp = 1 - torch.stack(ssim_vals).mean()
+            
+            # Use configurable weights from config
+            #mse_comp = torch.nn.MSELoss()(preds, labels)
+            #loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
+            loss = ssim_comp
+        
+        elif choice == 'mssim':
+            B, T, C, H, W = preds.shape
+        
+            # Compute SSIM at different scales
+            scales = [1, 2, 4]  # Different downsampling factors
+            ssim_vals = []
+            
+            torch.use_deterministic_algorithms(True, warn_only=True)
+            with torch.backends.cudnn.flags(enabled=False):
+                for scale in scales:
+                    # Downsample if scale > 1
+                    if scale > 1:
+                        pred_scaled = F.avg_pool2d(preds.view(B*T, C, H, W), scale)
+                        label_scaled = F.avg_pool2d(labels.view(B*T, C, H, W), scale)
+                    else:
+                        pred_scaled = preds.view(B*T, C, H, W)
+                        label_scaled = labels.view(B*T, C, H, W)
+                    
+                    # Compute SSIM for each channel
+                    for c in range(C):
+                        pred_c = pred_scaled[:, c:c+1]
+                        label_c = label_scaled[:, c:c+1]
+                        fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.device)
+                        ssim_value = fn(pred_c, label_c)
+                        ssim_vals.append(ssim_value)
+            
+            # Average SSIM across all scales and channels
+            ssim_comp = 1 - torch.stack(ssim_vals).mean()
+            
+            mse_comp = torch.nn.MSELoss()(preds, labels)
+            loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
+            
         else:
             raise ValueError(f"Unsupported loss function: {choice}")
             
@@ -156,9 +237,9 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
                                              eta_min=1e-6)
             
         elif self.lr_scheduler == 'CosineAnnealingWarmRestarts':
-            choice = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer,
-                                                                          T_0=10,
-                                                                          eta_min=1e-6)
+            lr_scheduler = CosineAnnealingWarmRestarts(optimizer,
+                                                        T_0=10,
+                                                        eta_min=1e-6)
             
         elif self.lr_scheduler == 'ReduceLROnPlateau':
             lr_scheduler = ReduceLROnPlateau(optimizer, 

@@ -60,10 +60,11 @@ class ModelConfig(BaseModel):
     arch: str # an int in config.yaml
     model_id: str
     optimizer: str
-    learning_rate: float = 1e-3
+    learning_rate: float = 3e-3
     lr_scheduler: Literal['CosineAnnealingLR', 'ReduceLROnPlateau', 'CosineAnnealingWarmRestarts']
     num_epochs: int = 0 
     objective_function: str = "mse"
+    ssim: Dict[str, Any]
     mcl_params: Dict[str, Any]
     mlp_real: Dict[str, Any]
     mlp_imag: Dict[str, Any]
@@ -100,6 +101,7 @@ class TrainerConfig(BaseModel):
     valid_rate: int = 1
     gpu_config: List[Any] = [True, [0]]
     matmul_precision: Literal['high', 'medium', 'low'] = 'medium'
+    resume: bool = False
     cross_validation: bool = True
     patience: int = 15
     min_delta: float = 0.0001
@@ -118,6 +120,7 @@ class PathsConfig(BaseModel):
     pretrained_ae: str
     pretrained_mlp: str
     pretrained_lstm: str
+    checkpoint: str
     mlp_results: str
     
     @model_validator(mode="after")
@@ -133,6 +136,7 @@ class PathsConfig(BaseModel):
         model.pretrained_ae = os.path.join(model.results, model.pretrained_ae)
         model.pretrained_mlp = os.path.join(model.results, model.pretrained_mlp)
         model.pretrained_lstm = os.path.join(model.results, model.pretrained_lstm)
+        model.checkpoint = os.path.join(model.results, model.checkpoint)
         model.mlp_results = os.path.join(model.results, model.mlp_results)
         return model
     
