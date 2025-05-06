@@ -1,9 +1,9 @@
 __pycache__/
 
-conf/config_comp_mse.yaml
-conf/config_comp_ssim.yaml
-conf/config_large_ssim.yaml
-conf/config_large_mse.yaml
+/conf/config_comp_mse.yaml
+/conf/config_comp_ssim.yaml
+/conf/config_large_ssim.yaml
+/conf/config_large_mse.yaml
 
 *.pdf
 *.html
