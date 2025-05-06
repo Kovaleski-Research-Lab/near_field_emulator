@@ -145,8 +145,9 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
             ssim_comp = 1 - torch.stack(ssim_vals).mean()
             
             # Add MSE component
-            mse_comp = torch.nn.MSELoss()(preds, labels)
-            loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
+            #mse_comp = torch.nn.MSELoss()(preds, labels)
+            #loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
+            loss = ssim_comp
         
         elif choice == 'ssim-seq':
             B, T, C, H, W = preds.shape
@@ -177,9 +178,8 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
             ssim_comp = 1 - torch.stack(ssim_vals).mean()
             
             # Use configurable weights from config
-            #mse_comp = torch.nn.MSELoss()(preds, labels)
-            #loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
-            loss = ssim_comp
+            mse_comp = torch.nn.MSELoss()(preds, labels)
+            loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
         
         elif choice == 'mssim':
             B, T, C, H, W = preds.shape
