@@ -9,6 +9,8 @@ from torchmetrics.functional.image import structural_similarity_index_measure as
 from skimage.metrics import structural_similarity as ssim
 import cv2
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
+import matplotlib.pyplot as plt
+import os
 
 class Encoder(nn.Module):
     """Encodes E to a representation space for input to RNN"""
@@ -17,36 +19,37 @@ class Encoder(nn.Module):
         
         self.method = conf.method
         self.latent_dim = conf.latent_dim
+        self.spatial = conf.spatial
         self.layers = nn.ModuleList()
-        current_channels = channels[0]
-
+        
         if self.method == 'conv':
-            current_size = conf.spatial
-            # Progressive spatial reduction while maintaining 2 channels
-            self.layers = nn.Sequential(
-                # First conv: 56x56 -> 28x28
-                nn.Conv2d(2, 16, kernel_size=5, stride=2, padding=2),
-                nn.BatchNorm2d(16),
-                nn.LeakyReLU(0.2),
-                
-                # Second conv: 28x28 -> 14x14
-                nn.Conv2d(16, 32, kernel_size=5, stride=2, padding=2),
-                nn.BatchNorm2d(32),
-                nn.LeakyReLU(0.2),
-                
-                # Third conv: 14x14 -> 7x7
-                nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=2),
-                nn.BatchNorm2d(64),
-                nn.LeakyReLU(0.2),
-                
-                # Final conv: 7x7 -> 3x3
-                nn.Conv2d(64, 2, kernel_size=3, stride=2, padding=1),
+            # Calculate number of downsampling steps needed
+            current_size = self.spatial
+            target_size = self.latent_dim
+            num_downsamples = int(np.log2(current_size / target_size))
+            
+            # Build encoder layers dynamically based on config
+            layers = []
+            in_channels = 2  # Start with 2 channels (real/imag)
+            
+            for i in range(num_downsamples):
+                out_channels = channels[i] if i < len(channels) else channels[-1]
+                layers.extend([
+                    nn.Conv2d(in_channels, out_channels, kernel_size=5, stride=2, padding=2),
+                    nn.BatchNorm2d(out_channels),
+                    nn.LeakyReLU(0.2)
+                ])
+                in_channels = out_channels
+            
+            # Final conv to maintain size
+            layers.extend([
+                nn.Conv2d(in_channels, 2, kernel_size=3, stride=1, padding=1),
                 nn.BatchNorm2d(2),
                 nn.LeakyReLU(0.2)
-            )
+            ])
             
-            # Calculate final size
-            self.final_size = current_size // 16  # 56 -> 3.5 -> 3
+            self.layers = nn.Sequential(*layers)
+            self.final_size = target_size
             self.final_channels = 2
             
         else:
@@ -65,40 +68,43 @@ class Decoder(nn.Module):
         self.channels = channels
         self.method = conf.method
         self.latent_dim = conf.latent_dim
-        self.initial_size = conf.spatial // 16  # 56 -> 3.5 -> 3
         self.spatial = conf.spatial
         
         if self.method == 'conv':
-            # Progressive spatial expansion while maintaining 2 channels
-            self.layers = nn.Sequential(
-                # First deconv: 3x3 -> 7x7
-                nn.ConvTranspose2d(2, 64, kernel_size=5, stride=2, padding=2, output_padding=1),
-                nn.BatchNorm2d(64),
-                nn.LeakyReLU(0.2),
-                
-                # Second deconv: 7x7 -> 14x14
-                nn.ConvTranspose2d(64, 32, kernel_size=5, stride=2, padding=2, output_padding=1),
-                nn.BatchNorm2d(32),
-                nn.LeakyReLU(0.2),
-                
-                # Third deconv: 14x14 -> 28x28
-                nn.ConvTranspose2d(32, 16, kernel_size=5, stride=2, padding=2, output_padding=1),
-                nn.BatchNorm2d(16),
-                nn.LeakyReLU(0.2),
-                
-                # Final deconv: 28x28 -> 56x56
-                nn.ConvTranspose2d(16, 2, kernel_size=5, stride=2, padding=2, output_padding=0),
+            # Calculate number of upsampling steps needed
+            current_size = self.latent_dim
+            target_size = self.spatial
+            num_upsamples = int(np.log2(target_size / current_size))
+            
+            # Build decoder layers dynamically based on config
+            layers = []
+            in_channels = 2  # Start with 2 channels (real/imag)
+            
+            for i in range(num_upsamples):
+                out_channels = channels[i] if i < len(channels) else channels[-1]
+                layers.extend([
+                    nn.ConvTranspose2d(in_channels, out_channels, kernel_size=5, stride=2, padding=2, output_padding=1),
+                    nn.BatchNorm2d(out_channels),
+                    nn.LeakyReLU(0.2)
+                ])
+                in_channels = out_channels
+            
+            # Final conv to maintain size
+            layers.extend([
+                nn.Conv2d(in_channels, 2, kernel_size=3, stride=1, padding=1),
                 nn.BatchNorm2d(2),
                 nn.Tanh()  # Use tanh for final activation to bound output
-            )
+            ])
+            
+            self.layers = nn.Sequential(*layers)
             
     def forward(self, x):
-        # x shape: [batch, 2, 3, 3]
+        # x shape: [batch, 2, latent_dim, latent_dim]
         x = self.layers(x)
         # Ensure exact size match
         if x.shape[-1] != self.spatial or x.shape[-2] != self.spatial:
             x = x[:, :, :self.spatial, :self.spatial]
-        return x  # [batch, 2, 56, 56]
+        return x  # [batch, 2, spatial, spatial]
     
 class Autoencoder(LightningModule):
     def __init__(self, model_config, fold_idx=None):
@@ -114,6 +120,10 @@ class Autoencoder(LightningModule):
         self.lr_scheduler = self.conf.lr_scheduler
         self.loss_func = self.conf.objective_function
         self.fold_idx = fold_idx
+        
+        # Create directory for latent space visualizations
+        self.latent_viz_dir = os.path.join(f'/develop/results/meep_meep/refractive_idx/autoencoder/model_{self.conf.model_id}/', 'latent_viz')
+        os.makedirs(self.latent_viz_dir, exist_ok=True)
                 
         self.test_results = {'train': {'nf_pred': [], 'nf_truth': []},
                              'valid': {'nf_pred': [], 'nf_truth': []}}
@@ -125,6 +135,29 @@ class Autoencoder(LightningModule):
         self.val_ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
         
         self.save_hyperparameters()
+        
+    def visualize_latent_space(self, z):
+        """
+        Visualize the first channel of the latent space as a heatmap.
+        
+        Parameters
+        ----------
+        z: torch.Tensor
+            Latent space tensor of shape [batch, 2, 14, 14]
+        """
+        # Get the first channel of the first batch item
+        latent_viz = z[0, 0].detach().cpu().numpy()
+        
+        # Create figure
+        plt.figure(figsize=(8, 8))
+        plt.imshow(latent_viz, cmap='viridis')
+        plt.colorbar()
+        plt.title('Latent Space Visualization (First Channel)')
+        
+        # Save to file (overwrite existing)
+        save_path = os.path.join(self.latent_viz_dir, 'latent_space.png')
+        plt.savefig(save_path)
+        plt.close()
         
     def state_dict(self, *args, **kwargs):
         """override state dict to organize things better"""
@@ -200,13 +233,13 @@ class Autoencoder(LightningModule):
     def forward(self, x):
         # [batch, 2, xdim, ydim] -> x
         z = self.encoder(x)
-        #print(f"z shape (latent after encoding): {z.shape}")
+        # Visualize latent space
+        self.visualize_latent_space(z)
         x_hat = self.decoder(z)
-        #print(f"x_hat shape (reconstruction): {x_hat.shape}")
         return x_hat
     
     def shared_step(self, batch, stage="train"):
-        x, _ = batch
+        x, m = batch
         if len(x.shape) == 5:
             x = x[:, 0] # [batch, 2, xdim, ydim]
             

@@ -191,7 +191,9 @@ class RawDataLoader:
             return os.path.join(self.conf.paths.data, 'preprocessed_data', 'dataset_nobuffer.pt')
         # handle naming convention for current refractive index dataset
         if self.conf.physics.material_parameter == "refidx":
-            method_str = "_2x2"
+            #method_str = "_2x2"
+            method_str = "_ae_encoded_14_2"
+            #method_str = "_refidx"
             if self.conf.model.forward_strategy == 6:
                 return os.path.join(self.conf.paths.data, f"dataset_{self.conf.model.modelstm.method}{method_str}.pt")
         else: # otherwise rn its just the radii data
@@ -469,7 +471,8 @@ class WaveMLP_Dataset(Dataset):
                 self.near_fields = torch.stack((temp_nf_1550[..., 0], temp_nf_1550[..., -1]), dim=4) # [num_samples, 2, 166, 166, 2]
             else:
                 # grab the final slice
-                self.near_fields = temp_nf_1550[:, :, :, :, 0] # [num_samples, 2, 166, 166]
+                #FRODO
+                self.near_fields = temp_nf_1550[:, :, :, :, -1] # [num_samples, 2, 166, 166]
             
 class WaveModel_Dataset(Dataset):
     """

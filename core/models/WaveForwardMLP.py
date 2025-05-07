@@ -6,6 +6,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 import math
+import os
 
 #--------------------------------
 # Import: Custom Python Libraries
@@ -21,6 +22,12 @@ class WaveForwardMLP(WaveResponseModel):
     Modes: Full, patch-wise"""
     def __init__(self, model_config, fold_idx=None):
         super().__init__(model_config, fold_idx)
+        # Initialize collection lists for encoded data
+        self.collected_data = {
+            'near_fields': [],
+            'designs': [],
+            'tag': []  # 0 for validation, 1 for training
+        }
         
     def create_architecture(self):
         # Determine strategy
@@ -158,7 +165,8 @@ class WaveForwardMLP(WaveResponseModel):
             self.decoder = nn.Sequential(*decoder_layers)
         elif self.strat == 'ae':
             # Load pretrained autoencoder
-            dirpath = '/develop/results/meep_meep/refractive_idx/autoencoder/model_spatial-test-mcl05-k5/'
+            #dirpath = '/develop/results/meep_meep/refractive_idx/autoencoder/model_refidx-v3-lr-3e3/'
+            dirpath = '/develop/results/meep_meep/refractive_idx/autoencoder/model_ae7x7-v1/'
             checkpoint = torch.load(dirpath + "model.ckpt")
             
             # Initialize encoder and decoder
@@ -221,7 +229,6 @@ class WaveForwardMLP(WaveResponseModel):
                 encoded_fields = self.encoder(near_fields)
             
             # forward pass through the latent MLP
-            #latent_preds = self.mlp_ae(designs)
             latent_preds_real = self.mlp_real(designs)
             latent_preds_imag = self.mlp_imag(designs)
             latent_preds_real = latent_preds_real.view(-1, self.conf.autoencoder.latent_dim, self.conf.autoencoder.latent_dim)
@@ -349,12 +356,12 @@ class WaveForwardMLP(WaveResponseModel):
             # Compute loss directly in latent space
             #latent_loss = self.compute_loss(latent_preds, encoded_labels, choice=self.loss_func)
             # DECODER STUFF
-            preds_combined = torch.stack([preds_real, preds_imag], dim=1)
+            '''preds_combined = torch.stack([preds_real, preds_imag], dim=1)
             preds_combined = self.decoder(preds_combined)
             preds_real = preds_combined[:, 0, :, :]
             preds_imag = preds_combined[:, 1, :, :]
             labels_real = near_fields[:, 0, :, :]
-            labels_imag = near_fields[:, 1, :, :]
+            labels_imag = near_fields[:, 1, :, :]'''
             
             # Near-field loss: compute separately for real and imaginary components
             near_field_loss_real = self.compute_loss(preds_real, labels_real, choice=self.loss_func)
@@ -442,6 +449,13 @@ class WaveForwardMLP(WaveResponseModel):
             preds, encoded_fields = predictions
             preds_real = preds[0]
             preds_imag = preds[1]
+            
+            # Store encoded fields and designs for dataset creation
+            self.collected_data['near_fields'].append(encoded_fields.cpu().numpy())
+            self.collected_data['designs'].append(designs.cpu().numpy())
+            # Add tag: 0 for validation (dataloader_idx=0), 1 for training (dataloader_idx=1)
+            self.collected_data['tag'].extend([dataloader_idx] * designs.shape[0])
+            
             # Keep as tensor for decoder
             preds_combined = torch.stack([preds_real, preds_imag], dim=1)
             # Pass through decoder while still a tensor
@@ -450,8 +464,6 @@ class WaveForwardMLP(WaveResponseModel):
             preds_combined = preds_combined.cpu().numpy()
             labels_real = near_fields[:, 0, :, :]
             labels_imag = near_fields[:, 1, :, :]
-            
-
         else:
             preds_real, preds_imag = predictions
             labels_real = near_fields[:, 0, :, :]
@@ -477,3 +489,17 @@ class WaveForwardMLP(WaveResponseModel):
             # Ensure tensors are on CPU before concatenation
             self.test_results[mode]['nf_pred'] = np.concatenate([x.cpu().numpy() if torch.is_tensor(x) else x for x in self.test_results[mode]['nf_pred']], axis=0)
             self.test_results[mode]['nf_truth'] = np.concatenate([x.cpu().numpy() if torch.is_tensor(x) else x for x in self.test_results[mode]['nf_truth']], axis=0)
+            
+        # If using AE strategy, might want to save the collected dataset
+        if self.strat == 'ae':
+            # Concatenate all collected data
+            dataset = {
+                'near_fields': torch.from_numpy(np.concatenate(self.collected_data['near_fields'], axis=0)).to(torch.float32),
+                'designs': torch.from_numpy(np.concatenate(self.collected_data['designs'], axis=0)).to(torch.float32),
+                'tag': torch.from_numpy(np.array(self.collected_data['tag'])).to(torch.long)
+            }
+            
+            # Save to disk
+            save_path = os.path.join('/develop/results/meep_meep/refractive_idx/mlp/model_{}/'.format(self.conf.model_id), 'encoded_dataset.pt')
+            torch.save(dataset, save_path)
+            print(f"Saved encoded dataset to {save_path}")

@@ -177,7 +177,8 @@ class WaveResponseModel(LightningModule, metaclass=abc.ABCMeta):
                 labels = labels.to(torch.float32).contiguous()
                 fn2 = torch.nn.MSELoss()
                 mse_comp = fn2(preds, labels)
-                loss = mse_comp + 0.8 * ssim_comp # compound loss
+                loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
+                #loss = ssim_comp
         else:
             raise ValueError(f"Unsupported loss function: {choice}")
             
@@ -217,6 +218,86 @@ class WaveResponseModel(LightningModule, metaclass=abc.ABCMeta):
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
      
+    '''def training_step(self, batch, batch_idx):
+        preds = self.shared_step(batch, batch_idx)
+        loss_dict = self.objective(batch, preds)
+        loss = loss_dict['loss']
+        
+        # log loss metrics
+        self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        
+        # Compute PSNR/SSIM for real and imaginary components
+        near_fields, designs = batch
+        psnr_vals = []
+        ssim_vals = []
+        
+        # Handle real and imaginary components separately
+        for comp in range(2):
+            pred_comp = preds[:, comp].unsqueeze(1)  # [B, 1, H, W]
+            truth_comp = near_fields[:, comp].unsqueeze(1)  # [B, 1, H, W]
+            
+            # Compute PSNR
+            psnr_val = self.train_psnr(pred_comp.float(), truth_comp.float())
+            if not torch.isnan(psnr_val) and not torch.isinf(psnr_val):
+                psnr_vals.append(psnr_val)
+            
+            # Compute SSIM only if size is sufficient
+            if pred_comp.size(-1) >= 11 and pred_comp.size(-2) >= 11:
+                ssim_val = self.train_ssim(pred_comp.float(), truth_comp.float())
+                if not torch.isnan(ssim_val) and not torch.isinf(ssim_val):
+                    ssim_vals.append(ssim_val)
+        
+        # Average metrics across components if we have valid values
+        if psnr_vals:
+            psnr = torch.stack(psnr_vals).mean()
+            self.log("train_psnr", psnr, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        
+        if ssim_vals:
+            ssim = torch.stack(ssim_vals).mean()
+            self.log("train_ssim", ssim, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        
+        return {'loss': loss, 'output': preds, 'target': batch}
+    
+    def validation_step(self, batch, batch_idx):
+        preds = self.shared_step(batch, batch_idx)
+        loss_dict = self.objective(batch, preds)
+        loss = loss_dict['loss']
+        
+        # log loss metrics
+        self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        
+        # Compute PSNR/SSIM for real and imaginary components
+        near_fields, designs = batch
+        psnr_vals = []
+        ssim_vals = []
+        
+        # Handle real and imaginary components separately
+        for comp in range(2):
+            pred_comp = preds[:, comp].unsqueeze(1)  # [B, 1, H, W]
+            truth_comp = near_fields[:, comp].unsqueeze(1)  # [B, 1, H, W]
+            
+            # Compute PSNR
+            psnr_val = self.val_psnr(pred_comp.float(), truth_comp.float())
+            if not torch.isnan(psnr_val) and not torch.isinf(psnr_val):
+                psnr_vals.append(psnr_val)
+            
+            # Compute SSIM only if size is sufficient
+            if pred_comp.size(-1) >= 11 and pred_comp.size(-2) >= 11:
+                ssim_val = self.val_ssim(pred_comp.float(), truth_comp.float())
+                if not torch.isnan(ssim_val) and not torch.isinf(ssim_val):
+                    ssim_vals.append(ssim_val)
+        
+        # Average metrics across components if we have valid values
+        if psnr_vals:
+            psnr = torch.stack(psnr_vals).mean()
+            self.log("val_psnr", psnr, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        
+        if ssim_vals:
+            ssim = torch.stack(ssim_vals).mean()
+            self.log("val_ssim", ssim, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        
+        return {'loss': loss, 'output': preds, 'target': batch}'''
+        
     def training_step(self, batch, batch_idx):
         preds = self.shared_step(batch, batch_idx)
         loss_dict = self.objective(batch, preds)

@@ -76,17 +76,20 @@ class CSVLoggerCallback(Callback):
         # Get current metrics
         metrics = trainer.callback_metrics
         
+        # Helper function to safely get metric value
+        def get_metric_value(metric_name, default=0):
+            value = metrics.get(metric_name, default)
+            return value.item() if torch.is_tensor(value) else value
+        
         # Create new row with correct epoch number
         new_row = {
-            'epoch': trainer.current_epoch,  # Don't add last_epoch, just use current_epoch
-            'val/base_loss': metrics.get('val/base_loss', 0).item(),
-            'val_loss': metrics.get('val_loss', 0).item(),
-            'val_psnr': metrics.get('val_psnr', 0).item(),
-            'val_ssim': metrics.get('val_ssim', 0).item(),
-            'train/base_loss': metrics.get('train/base_loss', 0).item(),
-            'train_loss': metrics.get('train_loss', 0).item(),
-            'train_psnr': metrics.get('train_psnr', 0).item(),
-            'train_ssim': metrics.get('train_ssim', 0).item()
+            'epoch': trainer.current_epoch,
+            'val_loss': get_metric_value('val_loss'),
+            'val_psnr': get_metric_value('val_psnr'),
+            'val_ssim': get_metric_value('val_ssim'),
+            'train_loss': get_metric_value('train_loss'),
+            'train_psnr': get_metric_value('train_psnr'),
+            'train_ssim': get_metric_value('train_ssim')
         }
         
         # Append to existing data

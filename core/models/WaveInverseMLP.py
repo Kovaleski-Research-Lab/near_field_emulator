@@ -10,6 +10,7 @@ import numpy as np
 #--------------------------------
 from .WaveResponseModel import WaveResponseModel
 from .WaveForwardMLP import WaveForwardMLP
+from .autoencoder import Encoder, Decoder
 
 sys.path.append("../")
 
@@ -59,13 +60,46 @@ class WaveInverseMLP(WaveResponseModel):
                 self.frozen_forward_model = self.frozen_forward_model.to(self.device)
             else:
                 raise RuntimeError("Tandem strategy selected but frozen_forward_model is not loaded.")
+        elif self.conf.inverse_strategy == 2:
+            self.strat = 'ae'
+            dirpath = '/develop/results/meep_meep/refractive_idx/autoencoder/model_ae7x7-v1/'
+            checkpoint = torch.load(dirpath + "model.ckpt")
+            
+            # Initialize encoder and decoder
+            self.encoder = Encoder(self.conf.autoencoder.encoder_channels, conf=self.conf.autoencoder)
+            self.decoder = Decoder(self.conf.autoencoder.decoder_channels, conf=self.conf.autoencoder)
+            
+            # Load pretrained weights
+            encoder_state_dict = {}
+            decoder_state_dict = {}
+            for key, value in checkpoint['state_dict'].items():
+                if key.startswith('encoder'):
+                    encoder_state_dict[key.replace('encoder.', '')] = value
+                elif key.startswith('decoder'):
+                    decoder_state_dict[key.replace('decoder.', '')] = value
+            
+            self.encoder.load_state_dict(encoder_state_dict)
+            self.decoder.load_state_dict(decoder_state_dict)
+            
+            # Freeze encoder and decoder weights
+            for param in self.encoder.parameters():
+                param.requires_grad = False
+            for param in self.decoder.parameters():
+                param.requires_grad = False
+            
         else:
             raise ValueError(f"Inverse strategy {self.conf.inverse_strategy} not recongized.")
+        
+        self.output_size = self.num_design_conf
         
         # initialize the architecture for inverse MLP
         self.cvnn = self.build_mlp(self.near_field_dim**2, self.conf.cvnn)
         
     def forward(self, designs, near_fields):
+        if self.strat == 'ae':
+            # transform to the encoded representation
+            near_fields = self.encoder(near_fields)
+        
         # going from fields to design
         batch_size = near_fields.size(0)
         nf_complex = torch.complex(near_fields[:, 0, :, :], near_fields[:, 1, :, :])

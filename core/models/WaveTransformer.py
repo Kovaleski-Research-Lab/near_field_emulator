@@ -320,7 +320,7 @@ class WaveTransformer(WavePropModel):
             # Combine the base loss and the weighted difference loss
             total_loss = base_loss + lambda_diff * diff_loss
 
-        # --- 3. Logging ---
+        '''# --- 3. Logging ---
         log_prefix = 'train' if self.training else 'val'
 
         self.log(f'{log_prefix}/base_loss', base_loss,
@@ -331,7 +331,7 @@ class WaveTransformer(WavePropModel):
                      on_step=False, on_epoch=True, sync_dist=True, prog_bar=False)
             # Log the lambda value used, helpful for tracking experiments
             self.log('hyperparameters/lambda_diff', lambda_diff,
-                     on_step=False, on_epoch=True, sync_dist=True)
+                     on_step=False, on_epoch=True, sync_dist=True)'''
  
         return {"loss": total_loss}
 

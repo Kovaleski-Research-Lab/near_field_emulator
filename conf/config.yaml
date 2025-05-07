@@ -51,13 +51,13 @@ model:
         # - 11: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 3
-    model_id: 'delete me'
+    arch: 2
+    model_id: '1a-ae-14-match-7030'
 
     # General Model Parameters
 
     optimizer: 'ADAM'
-    learning_rate: 1.e-4
+    learning_rate: 1.e-3
     lr_scheduler: 'CosineAnnealingLR'
     load_checkpoint: False
     objective_function: 'mse'
@@ -85,23 +85,23 @@ model:
     # - patch_size: patch height/width for patch wise or distributed subset
 
     mlp_real:
-        layers: [32, 64]
+        layers: [20, 20, 20, 20, 20, 20, 20, 20, 20]
         activation: 'relu'
 
     mlp_imag:
-        layers: [32, 64]
+        layers: [20, 20, 20, 20, 20, 20, 20, 20, 20]
         activation: 'relu'
 
     cvnn:
-        layers: [32, 64, 512]
+        layers: [256, 128]
         activation: 'complexrelu'
 
     dropout: 0.0
-    forward_strategy: 5
-    inverse_strategy: 1
+    forward_strategy: 0
+    inverse_strategy: 0
     patch_size: 3
-    num_design_conf: 9
-    near_field_dim: 166
+    num_design_conf: 4
+    near_field_dim: 14
     interpolate_fields: False
     forward_ckpt: '/develop/results/meep_meep/refractive_idx/cvnn/model_forward-BASELINE/model.ckpt'
 
@@ -154,22 +154,37 @@ model:
         use_smoothing: False
 
     # Autoencoder Parameters
-    # - encoder_channels: encoder channel progression
-    # - decoder_channels: decoder channel progression
+    # - encoder_channels: encoder channel progression (number of channels at each downsampling step)
+    # - decoder_channels: decoder channel progression (number of channels at each upsampling step)
+    # - latent_dim: size of the latent space (e.g., 14 for 14x14, 28 for 28x28)
+    # - spatial: input/output spatial size (e.g., 56 for 56x56)
+    # - method: layer types ('conv' only supported currently)
     # - pretrained: use pretrained autoencoder
     # - freeze_weights: whether to freeze weights
-    # - spatial: spatial size of the input
-    # - method: layer types ('linear' or 'conv')
+    # - use_decoder: whether to use decoder (for encoder-only mode)
 
     autoencoder:
-        encoder_channels: [2, 32, 64] # each step halves
-        decoder_channels: [64, 32, 2] # each step doubles
-        latent_dim: 4
+        # Current implementation (56x56 -> 14x14)
+        encoder_channels: [16, 32]  # Channels at each downsampling step
+        decoder_channels: [32, 16]  # Channels at each upsampling step
+        latent_dim: 14  # Results in 14x14 latent space
+        spatial: 56    # Input/output size
+        method: 'conv'
         pretrained: True
         freeze_weights: False
         use_decoder: True
-        spatial: 56
-        method: 'conv'
+
+        # Example for 56x56 -> 28x28
+        # encoder_channels: [16]  # Single downsampling step
+        # decoder_channels: [16]  # Single upsampling step
+        # latent_dim: 28         # Results in 28x28 latent space
+        # spatial: 56           # Input/output size
+
+        # Example for 56x56 -> 7x7
+        # encoder_channels: [16, 32, 64]  # Three downsampling steps
+        # decoder_channels: [64, 32, 16]  # Three upsampling steps
+        # latent_dim: 7          # Results in 7x7 latent space
+        # spatial: 56           # Input/output size
 
     # Diffusion Parameters
     # - num_generated_frames: number of frames to generate
@@ -287,7 +302,7 @@ physics:
 
     #experiment type - what was varied (pillar radii, height, refractive idx, etc.)
     # for preprocessing. current support for "radius" and "refidx"
-    material_parameter: "radius"
+    material_parameter: "refidx"
 
 #--------------------------------
 #       Datamodule Params
@@ -310,7 +325,7 @@ data:
     wv_preprocess: '3'
     wv_train: '3'
     wv_eval: '3'
-    normalize: False
+    normalize: True
     standardize: False
 
 #--------------------------------

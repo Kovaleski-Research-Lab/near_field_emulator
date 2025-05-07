@@ -1160,10 +1160,16 @@ def plot_inverse_scatter(test_results, save_fig=False, save_dir=None):
             truth = truth.cpu().numpy()
         if isinstance(pred, torch.Tensor):
             pred = pred.cpu().numpy()
-            
-        # Aggregate the 9 parameters per sample by taking the mean
-        truth_agg = np.mean(truth, axis=1)  # shape: (num_samples,)
-        pred_agg = np.mean(pred, axis=1)    # shape: (num_samples,)
+        
+        # Handle both 1D and multi-dimensional arrays
+        if truth.ndim == 1:
+            # Already 1D arrays, no need to aggregate
+            truth_agg = truth
+            pred_agg = pred
+        else:
+            # Multi-dimensional arrays, aggregate by taking mean
+            truth_agg = np.mean(truth, axis=1)  # shape: (num_samples,)
+            pred_agg = np.mean(pred, axis=1)    # shape: (num_samples,)
         
         # Normalize values to range [2.0, 4.0]
         def normalize_to_range(x, new_min=2.0, new_max=4.0):
@@ -1216,29 +1222,29 @@ def plot_inverse_scatter(test_results, save_fig=False, save_dir=None):
         os.makedirs(misc_dir, exist_ok=True)
         
         create_scatter_plot(
-            test_results['train']['nf_truth'],
-            test_results['train']['nf_pred'],
+            test_results['train']['design_truth'],
+            test_results['train']['design_pred'],
             'Training Set Predictions',
             'train_scatter.pdf'
         )
         
         create_scatter_plot(
-            test_results['valid']['nf_truth'],
-            test_results['valid']['nf_pred'],
+            test_results['valid']['design_truth'],
+            test_results['valid']['design_pred'],
             'Validation Set Predictions',
             'valid_scatter.pdf'
         )
     else:
         create_scatter_plot(
-            test_results['train']['nf_truth'],
-            test_results['train']['nf_pred'],
+            test_results['train']['design_truth'],
+            test_results['train']['design_pred'],
             'Training Set Predictions',
             None
         )
         
         create_scatter_plot(
-            test_results['valid']['nf_truth'],
-            test_results['valid']['nf_pred'],
+            test_results['valid']['design_truth'],
+            test_results['valid']['design_pred'],
             'Validation Set Predictions',
             None
         )
