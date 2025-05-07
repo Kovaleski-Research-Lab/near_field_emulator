@@ -130,3 +130,79 @@ def sync_power(data):
     normalized[:, 1, :, :, :] = imag * scale_factor
     
     return normalized
+
+def reduce_data_resolution(data: dict) -> dict:
+    """
+    Reduces the resolution of near fields and radii data while preserving core information.
+    Also scales the radii values to be in the range [2.0, 4.0].
+    
+    Parameters
+    ----------
+    data: dict
+        Dictionary containing 'near_fields' and 'radii' tensors
+        near_fields shape: [100, 2, 166, 166, 63]
+        radii shape: [100, 9]
+        
+    Returns
+    -------
+    dict
+        Dictionary with reduced resolution data
+        near_fields shape: [100, 2, 56, 56, 63]
+        radii shape: [100, 4] with values scaled to [2.0, 4.0]
+    """
+    # Create a copy of the input data to avoid modifying the original
+    reduced_data = data.copy()
+    
+    # Reduce near fields resolution using bilinear interpolation
+    near_fields = data['near_fields']  # [100, 2, 166, 166, 63]
+    reduced_near_fields = torch.nn.functional.interpolate(
+        near_fields.reshape(-1, 2, 166, 166),  # Reshape to [100*63, 2, 166, 166]
+        size=(56, 56),
+        mode='bilinear',
+        align_corners=False
+    ).reshape(100, 2, 56, 56, 63)  # Reshape back to [100, 2, 56, 56, 63]
+    
+    # Reduce radii dimensionality using PCA-like approach
+    # We'll select the most significant radii that capture the core information
+    radii = data['radii']  # [100, 9]
+    
+    # Calculate the mean radius for each sample
+    mean_radius = radii.mean(dim=1, keepdim=True)  # [100, 1]
+    
+    # Select the 3 most significant radii (excluding the mean)
+    # We'll use the radii at positions 0, 4, and 8 to capture the full range
+    selected_radii = torch.stack([
+        radii[:, 0],  # First radius
+        radii[:, 4],  # Middle radius
+        radii[:, 8],  # Last radius
+        mean_radius.squeeze(1)  # Mean radius
+    ], dim=1)  # [100, 4]
+    
+    # Scale the radii to the range [2.0, 4.0]
+    min_val = selected_radii.min()
+    max_val = selected_radii.max()
+    scaled_radii = 2.0 + (selected_radii - min_val) * (2.0 / (max_val - min_val))
+    
+    # Update the data dictionary
+    reduced_data['near_fields'] = reduced_near_fields
+    reduced_data['radii'] = scaled_radii
+    
+    return reduced_data
+
+def save_reduced_data(data: dict, output_path: str) -> None:
+    """
+    Saves the reduced resolution data to a .pt file.
+    
+    Parameters
+    ----------
+    data: dict
+        Dictionary containing the reduced resolution data
+    output_path: str
+        Path where the .pt file should be saved
+    """
+    # Ensure the output directory exists
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
+    # Save the data
+    torch.save(data, output_path)
+    print(f"Reduced data saved to {output_path}")

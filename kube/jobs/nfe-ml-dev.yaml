@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ethan-nfe-ml-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nfe-dev
+  template:
+    metadata:
+      labels:
+        app: nfe-dev
+    spec:
+      restartPolicy: Always
+      containers:
+      - name: ethan-nfe-ml
+        image: docker.io/kovaleskilab/ml_ssh:latest
+        imagePullPolicy: Always
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            cd /develop/code &&
+            git clone https://github.com/Kovaleski-Research-Lab/near_field_emulator.git &&
+            echo "Dev container ready. Waiting for interactive session..." &&
+            tail -f /dev/null
+        resources:
+          limits:
+            memory: 200Gi
+            cpu: 24
+            nvidia.com/a100: 1
+          requests:
+            memory: 200Gi
+            cpu: 24
+            nvidia.com/a100: 1
+        volumeMounts:
+        - name: nfe-data
+          mountPath: /develop/data
+        - name: training-results
+          mountPath: /develop/results
+        - name: shm
+          mountPath: /dev/shm
+      volumes:
+      - name: nfe-data
+        persistentVolumeClaim:
+          claimName: nfe-data
+      - name: training-results
+        persistentVolumeClaim:
+          claimName: training-results
+      - name: shm
+        emptyDir:
+          medium: Memory
