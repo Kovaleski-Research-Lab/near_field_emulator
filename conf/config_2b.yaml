@@ -12,7 +12,7 @@
 # - 0: local
 # - 1: kubernetes
 
-directive: 1
+directive: 2
 deployment: 1
 
 
@@ -51,16 +51,16 @@ model:
         # - 11: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 9
-    model_id: 'comp-mcl'
+    arch: 1
+    model_id: '2b'
 
     # General Model Parameters
 
     optimizer: 'ADAM'
-    learning_rate: 1.e-4
+    learning_rate: 1.e-3
     lr_scheduler: 'CosineAnnealingLR'
     load_checkpoint: False
-    objective_function: 'ssim'
+    objective_function: 'mse'
 
     # multi-criteria loss
     mcl_params:
@@ -96,12 +96,12 @@ model:
         layers: [512, 64, 32]
         activation: 'complexrelu'
 
-    dropout: 0.0
+    dropout: 0.2
     forward_strategy: 0
     inverse_strategy: 0
     patch_size: 3
-    num_design_conf: 9
-    near_field_dim: 166
+    num_design_conf: 4
+    near_field_dim: 56
     interpolate_fields: False
     forward_ckpt: '/develop/results/meep_meep/refractive_idx/cvnn/model_forward-BASELINE/model.ckpt'
 
@@ -227,7 +227,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 100 # maximum
+    num_epochs: 50 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
@@ -302,7 +302,7 @@ physics:
 
     #experiment type - what was varied (pillar radii, height, refractive idx, etc.)
     # for preprocessing. current support for "radius" and "refidx"
-    material_parameter: "radius"
+    material_parameter: "refidx"
 
 #--------------------------------
 #       Datamodule Params
@@ -324,9 +324,9 @@ data:
     wv_dict: {'1': 1.06, '2': 1.3, '3': 1.55, '4': 1.65, '5': 2.881}
     wv_preprocess: '3'
     wv_train: '3'
-    wv_eval: '2'
-    normalize: False
-    standardize: True
+    wv_eval: '3'
+    normalize: True
+    standardize: False
 
 #--------------------------------
 #       Kube Params

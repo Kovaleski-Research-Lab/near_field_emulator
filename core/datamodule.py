@@ -102,7 +102,7 @@ class RawDataLoader:
                 data['near_fields'], self.global_mean, self.global_std = mapping.standardize(data['near_fields'])
                 
                 # Save standardization parameters
-                stats_path = os.path.join(self.conf.paths.data, 'preprocessed_data', 'global_stats.pt')
+                stats_path = os.path.join(self.conf.paths.data, 'global_stats.pt')
                 torch.save({
                     'mean': self.global_mean,
                     'std': self.global_std
@@ -124,7 +124,7 @@ class RawDataLoader:
             
             if self.conf.data.standardize:
                 # Load saved statistics
-                stats_path = os.path.join(self.conf.paths.data, 'preprocessed_data', 'global_stats.pt')
+                stats_path = os.path.join(self.conf.paths.data, 'global_stats.pt')
                 stats = torch.load(stats_path)
                 device = data['near_fields'].device
                 self.global_mean = stats['mean'].to(device)
@@ -191,8 +191,8 @@ class RawDataLoader:
             return os.path.join(self.conf.paths.data, 'preprocessed_data', 'dataset_nobuffer.pt')
         # handle naming convention for current refractive index dataset
         if self.conf.physics.material_parameter == "refidx":
-            #method_str = "_2x2"
-            method_str = "_ae_encoded_14_2"
+            method_str = "_2x2"
+            #method_str = "_ae_encoded_14_2"
             #method_str = "_refidx"
             if self.conf.model.forward_strategy == 6:
                 return os.path.join(self.conf.paths.data, f"dataset_{self.conf.model.modelstm.method}{method_str}.pt")

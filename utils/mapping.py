@@ -105,6 +105,25 @@ def standardize(data):
     data = (data - means) / stds
     return data, means, stds
 
+def destandardize(data, stats_path):
+    """
+    assumes input is standardized data of shape [samples, channels, H, W, slices]
+    """
+    # Load the statistics
+    stats = torch.load(stats_path)
+    means = stats['mean']
+    stds = stats['std']
+    
+    # Ensure means and stds have the right shape for broadcasting
+    if means.dim() == 1:
+        means = means.unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+    if stds.dim() == 1:
+        stds = stds.unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+    
+    # Reverse the standardization
+    data = data * stds + means
+    return data
+
 def sync_power(data):
     # Calculate magnitude for each position
     real = data[:, 0, :, :, :]  # [samples, H, W, slices]

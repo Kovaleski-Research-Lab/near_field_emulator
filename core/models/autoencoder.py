@@ -234,7 +234,7 @@ class Autoencoder(LightningModule):
         # [batch, 2, xdim, ydim] -> x
         z = self.encoder(x)
         # Visualize latent space
-        self.visualize_latent_space(z)
+        #self.visualize_latent_space(z)
         x_hat = self.decoder(z)
         return x_hat
     
