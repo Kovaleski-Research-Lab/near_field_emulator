@@ -45,7 +45,7 @@ class RawDataLoader:
         Scale evaluation data to match statistical properties of training data
         NOTE: This only scales the data if the loaded eval dataset is a different
         file than the dataset loaded for training (aka we trained on wavelength 4 and
-        are now trying to evaluate on wavelength 4)
+        are now trying to evaluate on wavelength 3)
         
         Args:
             eval_data: Data to be scaled

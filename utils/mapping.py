@@ -107,7 +107,9 @@ def standardize(data):
 
 def destandardize(data, stats_path):
     """
-    assumes input is standardized data of shape [samples, channels, H, W, slices]
+    input is standardized data of shape [samples, slices, channels, H, W]
+    stats (means, stds) are shaped [samples, channels, H, W, slices]
+    (so we need to permute (0,4,1,2,3))
     """
     # Load the statistics
     stats = torch.load(stats_path)
@@ -119,9 +121,16 @@ def destandardize(data, stats_path):
         means = means.unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4)
     if stds.dim() == 1:
         stds = stds.unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+        
+    # ensure numpy bc thats what the data is at this point
+    if torch.is_tensor(means):
+        means = means.permute(0,4,1,2,3)
+        stds = stds.permute(0,4,1,2,3)
+        means_np = means.numpy()
+        stds_np = stds.numpy()
     
     # Reverse the standardization
-    data = data * stds + means
+    data = data * stds_np + means_np
     return data
 
 def sync_power(data):

@@ -47,7 +47,7 @@ def plotting(conf, test_results, results_dir, fold_num=None):
         
     # de-standardize results if necessary
     if conf.data.standardize:
-        stats_path = os.path.join(conf.paths.data, 'preprocessed_data', 'global_stats.pt')
+        stats_path = os.path.join(conf.paths.data, 'global_stats.pt')
         for set in ['train', 'valid']:
             test_results[set]['nf_truth'] = mapping.destandardize(test_results[set]['nf_truth'], stats_path)
             test_results[set]['nf_pred'] = mapping.destandardize(test_results[set]['nf_pred'], stats_path)
