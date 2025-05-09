@@ -62,7 +62,7 @@ class WaveInverseMLP(WaveResponseModel):
                 raise RuntimeError("Tandem strategy selected but frozen_forward_model is not loaded.")
         elif self.conf.inverse_strategy == 2:
             self.strat = 'ae'
-            dirpath = '/develop/results/meep_meep/refractive_idx/autoencoder/model_ae7x7-v1/'
+            dirpath = '/develop/results/meep_meep/refractive_idx/autoencoder/model_14x14-v1/'
             checkpoint = torch.load(dirpath + "model.ckpt")
             
             # Initialize encoder and decoder

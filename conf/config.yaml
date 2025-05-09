@@ -51,8 +51,8 @@ model:
         # - 11: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 9
-    model_id: 'wl24-ssim'
+    arch: 1
+    model_id: '3a-28ae-mse'
 
     # General Model Parameters
 
@@ -60,7 +60,7 @@ model:
     learning_rate: 1.e-4
     lr_scheduler: 'CosineAnnealingLR'
     load_checkpoint: False
-    objective_function: 'ssim'
+    objective_function: 'mse'
 
     # multi-criteria loss
     mcl_params:
@@ -100,8 +100,8 @@ model:
     forward_strategy: 0
     inverse_strategy: 0
     patch_size: 3
-    num_design_conf: 9
-    near_field_dim: 166
+    num_design_conf: 4
+    near_field_dim: 28
     interpolate_fields: False
     forward_ckpt: '/develop/results/meep_meep/refractive_idx/cvnn/model_forward-BASELINE/model.ckpt'
 
@@ -203,10 +203,10 @@ model:
     # - mlp_ratio:
 
     transformer:
-        patch_size: 16
-        embed_dim: 512
-        depth: 6
-        num_heads: 4
+        patch_size: 11
+        embed_dim: 384
+        depth: 4
+        num_heads: 8
         mlp_ratio: 4.0
         use_diff_loss: False
         lambda_diff: 0.1
@@ -227,7 +227,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 20 # maximum
+    num_epochs: 25 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
@@ -302,7 +302,7 @@ physics:
 
     #experiment type - what was varied (pillar radii, height, refractive idx, etc.)
     # for preprocessing. current support for "radius" and "refidx"
-    material_parameter: "radius"
+    material_parameter: "refidx"
 
 #--------------------------------
 #       Datamodule Params
@@ -323,9 +323,9 @@ data:
     buffer: True
     wv_dict: {'1': 1.06, '2': 1.3, '3': 1.55, '4': 1.65, '5': 2.881}
     wv_preprocess: '3'
-    wv_train: '24'
+    wv_train: '3'
     wv_eval: '3'
-    normalize: False
+    normalize: True
     standardize: False
 
 #--------------------------------
