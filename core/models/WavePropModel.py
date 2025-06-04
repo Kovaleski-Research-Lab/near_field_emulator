@@ -213,28 +213,23 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
             loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
             
         elif choice == 'kspace': # the multi-param complex loss term chiefly controlled by mcl_params
-            k_vals = []
-            for t in range(T):
-                pred_t = preds[:, t] # [B, C, H, W]
-                label_t = labels[:, t]
-                # convert batch to complex tensors [B, H, W]
-                pred_cplx = torch.complex(pred_t[:, 0, :, :], pred_t[:, 1, :, :])
-                label_cplx = torch.complex(label_t[:, 0, :, :], label_t[:, 1, :, :])
-                
-                batch_k_vals = []
-                for b in range(B):  
-                    loss_obj = K_losses(label_cplx[b], pred_cplx[b]) # [H, W]
-                    kMag = loss_obj.kMag(option='log')
-                    kPhase = loss_obj.kPhase(option='mag_weight')
-                    kRadial = loss_obj.kRadial(num_bins=100)
-                    kAngular = loss_obj.kAngular(num_bins=100)
-                    batch_loss = (self.conf.mcl_params['alpha'] * kMag + self.conf.mcl_params['beta'] * kPhase +
-                                 self.conf.mcl_params['gamma'] * kRadial + self.conf.mcl_params['delta'] * kAngular)
-                    batch_k_vals.append(batch_loss)
-                batch_comp = torch.stack(batch_k_vals).mean()
-                k_vals.append(batch_comp)
-            # get the final concrete k loss, mse, and construct full loss
-            k_comp = torch.stack(k_vals).mean()
+            preds_reshaped = preds.view(B*T, C, H, W)
+            labels_reshaped = labels.view(B*T, C, H, W)
+
+            # convert complex tensors [B*T, H, W]
+            pred_cplx = torch.complex(preds_reshaped[:, 0, :, :], preds_reshaped[:, 1, :, :])
+            label_cplx = torch.complex(labels_reshaped[:, 0, :, :], labels_reshaped[:, 1, :, :])
+            
+            # commpute k-space loss terms
+            loss_obj = K_losses(label_cplx, pred_cplx, num_bins=100)
+            kMag = loss_obj.kMag(option='log')
+            kPhase = loss_obj.kPhase(option='mag_weight')
+            kRadial = loss_obj.kRadial()
+            kAngular = loss_obj.kAngular()
+            
+            # compute the final compound loss
+            k_comp = (self.conf.mcl_params['alpha'] * kMag + self.conf.mcl_params['beta'] * kPhase +
+                            self.conf.mcl_params['gamma'] * kRadial + self.conf.mcl_params['delta'] * kAngular)
             mse_comp = torch.nn.MSELoss()(preds, labels)
             loss = mse_comp + k_comp
 

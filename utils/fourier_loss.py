@@ -9,18 +9,26 @@ import argparse
 #--------------------------------
 
 class Losses:
-    def __init__(self, truth, pred):
+    def __init__(self, truth, pred, num_bins):
         """Various loss functions and metrics
 
         Parameters
         ----------
         truth (torch.complex): field ground truths [xdim,ydim]
         pred (torch.complex): model predictions [xdim,ydim]
+        num_bins: the number of bins for radial and angular functions
         """
         self.gt = truth
         self.pred = pred
+        self.device = truth.device
+        self.num_bins = num_bins
         self.gt_k = torch.fft.fft2(self.gt, norm="ortho")
         self.pred_k = torch.fft.fft2(self.pred, norm="ortho")
+        n, h, w = self.gt_k.shape
+        # compute these just once
+        self.polar_coords = precompute_polar_coordinates(h, w, self.device)
+        self.radial_bin_edges = torch.linspace(0, torch.hypot(torch.tensor(h/2), torch.tensor(w/2)).item(), num_bins + 1, device=self.device)
+        self.angle_bin_edges = torch.linspace(0, 360, num_bins + 1, device=self.device)
         
     def mse(self):
         return torch.mean(torch.abs(self.gt - self.pred)**2)
@@ -63,7 +71,7 @@ class Losses:
         else:
             raise ValueError(f"option: {option} is not recognized.")
     
-    def kRadial(self, num_bins=100):
+    def kRadial(self):
         """k-space radial loss. Returns the MSE of radial profiles (annular binning) between ground
         truths and predictions.
         
@@ -71,110 +79,97 @@ class Losses:
         ----------
         num_bins (int): number of bins for the radial profiling.
         """
-        gt_k_radial = get_radial_profile(self.gt_k, num_bins)
-        pred_k_radial = get_radial_profile(self.pred_k, num_bins)
-        return torch.mean((gt_k_radial.float().to(self.gt.device) - 
-                           pred_k_radial.float().to(self.pred.device))**2)
+        gt_k_radial = get_radial_profile(self.gt_k, self.polar_coords[0], self.radial_bin_edges, self.num_bins)
+        pred_k_radial = get_radial_profile(self.pred_k, self.polar_coords[0], self.radial_bin_edges, self.num_bins)
+        return torch.mean((gt_k_radial.float().to(self.device) - 
+                           pred_k_radial.float().to(self.device))**2)
     
-    def kAngular(self, num_bins=100):
+    def kAngular(self):
         """k-space angular loss. Returns the MSE of angular profiles between ground truths and predictions.
-        
-        Parameters
-        ----------
-        num_bins (int): number of bins for the angular profiling.
         """
-        gt_k_angular = get_angular_profile(self.gt_k, num_bins)
-        pred_k_angular = get_angular_profile(self.pred_k, num_bins)
-        return torch.mean((gt_k_angular.float().to(self.gt.device) - 
-                           pred_k_angular.float().to(self.pred.device))**2)
+        gt_k_angular = get_angular_profile(self.gt_k, self.polar_coords[1], self.angle_bin_edges, self.num_bins)
+        pred_k_angular = get_angular_profile(self.pred_k, self.polar_coords[1], self.angle_bin_edges, self.num_bins)
+        return torch.mean((gt_k_angular.float().to(self.device) - 
+                           pred_k_angular.float().to(self.device))**2)
     
 #--------------------------------
 # HELPER FUNCTIONS for profile calculation
 #--------------------------------
+
+def precompute_polar_coordinates(H, W, device):
+    y = torch.arange(0, H, device=device, dtype=torch.float32)
+    x = torch.arange(0, W, device=device, dtype=torch.float32)
+    y_indices, x_indices = torch.meshgrid(y, x, indexing='ij')
+    crow, ccol = H // 2, W // 2
+    x_coords = x_indices - ccol
+    y_coords = y_indices - crow
+    rho = torch.sqrt(x_coords**2 + y_coords**2) # (H, W)
+    theta = (torch.arctan2(y_coords, x_coords) * 180 / torch.pi) % 360 # (H, W)
+    return rho, theta
     
-def get_radial_profile(field, num_bins):
+def get_radial_profile(field, rho, radial_bin_edges, num_bins):
     """Computes 1D radial profiles (annular binning) of an input field.
     
     Parameters
     ----------
     field (torch.tensor): Input field of shape [xdim, ydim]
+    rho (torch.tensor): Polar rho component
+    radial_bin_edges (torch.tensor): binning setup
     num_bins (int): number of bins for the radial profiling.
     """
+    N, H, W = field.shape
+    
     # 1. Get spatial amplitude map
-    magnitude_map = torch.abs(field)
+    magnitude_maps = torch.abs(field)
     
     # Ensure DC is at center for coordinate calculations:
-    mag_map_shifted = torch.fft.fftshift(magnitude_map)
-
-    h, w = mag_map_shifted.shape
-    crow, ccol = h // 2, w // 2 # center
-
-    # 2. Create Polar Coordinates
-    y = torch.arange(0, h, device=field.device, dtype=field.dtype)
-    x = torch.arange(0, w, device=field.device, dtype=field.dtype)
-    y_indices, x_indices = torch.meshgrid(y, x, indexing='ij')
-    x_coords = x_indices - ccol
-    y_coords = y_indices - crow
-
-    rho = torch.sqrt(x_coords.float()**2 + y_coords.float()**2)  # Radius from center (spatial frequency)
-
-    # 3. Spatial Radial Profile of Amplitude
-    # Max radius corresponds to the highest frequency represented in the DFT grid
-    max_radius_for_hist = torch.hypot(torch.tensor(h / 2, device=field.device), torch.tensor(w / 2, device=field.device))
-    # radial_hist[i] is the total e-field amplitude found in the i-th annular ring in the spatial domain
-    radial_hist = torch.zeros(num_bins, device=field.device)
-    radial_bin_edges = torch.linspace(0, max_radius_for_hist.item(), num_bins + 1, device=field.device)
-
+    mag_maps_shifted = torch.fft.fftshift(magnitude_maps, dim=(-2, -1))
+    
+    # expand rho for broadcasting
+    rho_expanded = rho.unsqueeze(0)
+    
+    radial_hist = torch.zeros(N, num_bins, device=field.device)    
     for i in range(num_bins):
-        mask = (rho >= radial_bin_edges[i]) & (rho < radial_bin_edges[i+1])
-        radial_hist[i] = torch.sum(mag_map_shifted[mask])
+        mask = (rho_expanded >= radial_bin_edges[i]) & (rho_expanded < radial_bin_edges[i+1])
+        # summing over (H,W) dims for each item in batch
+        radial_hist[:, i] = torch.sum(mag_maps_shifted * mask, dim=(-2,-1))
 
     # Normalize
     epsilon = 1e-10
-    radial_hist_norm = radial_hist / (torch.sum(radial_hist) + epsilon)
-
+    radial_hist_norm = radial_hist / (torch.sum(radial_hist, dim=1, keepdim=True) + epsilon)
     return radial_hist_norm
 
-def get_angular_profile(field, num_bins):
+def get_angular_profile(field, theta, angle_bin_edges, num_bins):
     """Computes 1D angular profiles of an input field.
     
     Parameters
     ----------
     field (torch.tensor): Input field of shape [xdim, ydim]
+    theta (torch.tensor): Polar theta component
+    angle_bin_edges (torch.tensor): binning setup
     num_bins (int): number of bins for the angular profiling.
     """
+    N, H, W = field.shape
+    
     # 1. Get spatial amplitude map
-    magnitude_map = torch.abs(field)
+    magnitude_maps = torch.abs(field)
     
     # Ensure DC is at center for coordinate calculations:
-    mag_map_shifted = torch.fft.fftshift(magnitude_map)
-
-    h, w = mag_map_shifted.shape
-    crow, ccol = h // 2, w // 2 # center
-
-    # 2. Create Polar Coordinates
-    y = torch.arange(0, h, device=field.device, dtype=field.dtype)
-    x = torch.arange(0, w, device=field.device, dtype=field.dtype)
-    y_indices, x_indices = torch.meshgrid(y, x, indexing='ij')
-    x_coords = x_indices - ccol
-    y_coords = y_indices - crow
-
-    theta = (torch.arctan2(y_coords.float(), x_coords.float()) * 180 / torch.pi) % 360  # Angle
-
-    # 3. Spatial Angular Profile of Amplitude
-    angle_hist = torch.zeros(num_bins, device=field.device)
-    angle_bin_edges = torch.linspace(0, 360, num_bins + 1, device=field.device)
-
+    mag_maps_shifted = torch.fft.fftshift(magnitude_maps, dim=(-2, -1))
+    
+    theta_expanded = theta.unsqueeze(0)
+    
+    angle_hist = torch.zeros(N, num_bins, device=field.device)
     for i in range(num_bins):
-        mask_angle = (theta >= angle_bin_edges[i]) & (theta < angle_bin_edges[i+1])
-        if i == num_bins - 1: # Ensure last bin includes 360 for completeness if needed
-            mask_angle = (theta >= angle_bin_edges[i]) & (theta <= angle_bin_edges[i+1])
-        angle_hist[i] = torch.sum(mag_map_shifted[mask_angle])
-
+        if i == num_bins - 1:
+            mask_angle = (theta_expanded >= angle_bin_edges[i]) & (theta_expanded <= angle_bin_edges[i+1])
+        else:
+            mask_angle = (theta_expanded >= angle_bin_edges[i]) & (theta_expanded < angle_bin_edges[i+1])
+        angle_hist[:, i] = torch.sum(mag_maps_shifted * mask_angle, dim=(-1, -2))
+    
     # Normalize
     epsilon = 1e-10
-    angle_hist_norm = angle_hist / (torch.sum(angle_hist) + epsilon)
-
+    angle_hist_norm = angle_hist / (torch.sum(angle_hist, dim=1, keepdim=True) + epsilon)
     return angle_hist_norm
 
 #--------------------------------
