@@ -18,7 +18,7 @@ import abc
 #--------------------------------
 # Import: Custom Python Libraries
 #--------------------------------
-#from utils import parameter_manager
+from utils.fourier_loss import Losses as K_losses
 
 sys.path.append("../")
 
@@ -100,6 +100,11 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
         Compute loss given predictions and labels.
         Subclasses can override if needed, but this base implementation is standard.
         """
+        if preds.ndim == 3: # vanilla LSTM, for example, flattens spatial and r/i dims
+            preds = preds.view(preds.shape[0], preds.shape[1], 2, self.conf.near_field_dim, self.conf.near_field_dim)
+            labels = labels.view(labels.shape[0], labels.shape[1], 2, self.conf.near_field_dim, self.conf.near_field_dim)
+        B, T, C, H, W = preds.shape
+
         if choice == 'mse':
             # Mean Squared Error
             preds = preds.to(torch.float32).contiguous()
@@ -125,8 +130,6 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
             
         # Structural Similarity Index Approaches
         elif choice == 'ssim': # standard (full volume)
-            # Reshape to combine batch and sequence dimensions
-            B, T, C, H, W = preds.shape
             preds_reshaped = preds.view(B*T, C, H, W)
             labels_reshaped = labels.view(B*T, C, H, W)
             
@@ -149,9 +152,7 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
             loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
             #loss = ssim_comp
         
-        elif choice == 'ssim-seq':
-            B, T, C, H, W = preds.shape
-            
+        elif choice == 'ssim-seq':    
             # local SSIM computation
             window_size = self.conf.ssim['window_size']
             
@@ -181,9 +182,7 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
             mse_comp = torch.nn.MSELoss()(preds, labels)
             loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
         
-        elif choice == 'mssim':
-            B, T, C, H, W = preds.shape
-        
+        elif choice == 'mssim':  
             # Compute SSIM at different scales
             scales = [1, 2, 4]  # Different downsampling factors
             ssim_vals = []
@@ -213,6 +212,32 @@ class WavePropModel(LightningModule, metaclass=abc.ABCMeta):
             mse_comp = torch.nn.MSELoss()(preds, labels)
             loss = self.conf.mcl_params['alpha'] * mse_comp + self.conf.mcl_params['beta'] * ssim_comp
             
+        elif choice == 'kspace': # the multi-param complex loss term chiefly controlled by mcl_params
+            k_vals = []
+            for t in range(T):
+                pred_t = preds[:, t] # [B, C, H, W]
+                label_t = labels[:, t]
+                # convert batch to complex tensors [B, H, W]
+                pred_cplx = torch.complex(pred_t[:, 0, :, :], pred_t[:, 1, :, :])
+                label_cplx = torch.complex(label_t[:, 0, :, :], label_t[:, 1, :, :])
+                
+                batch_k_vals = []
+                for b in range(B):  
+                    loss_obj = K_losses(label_cplx[b], pred_cplx[b]) # [H, W]
+                    kMag = loss_obj.kMag(option='log')
+                    kPhase = loss_obj.kPhase(option='mag_weight')
+                    kRadial = loss_obj.kRadial(num_bins=100)
+                    kAngular = loss_obj.kAngular(num_bins=100)
+                    batch_loss = (self.conf.mcl_params['alpha'] * kMag + self.conf.mcl_params['beta'] * kPhase +
+                                 self.conf.mcl_params['gamma'] * kRadial + self.conf.mcl_params['delta'] * kAngular)
+                    batch_k_vals.append(batch_loss)
+                batch_comp = torch.stack(batch_k_vals).mean()
+                k_vals.append(batch_comp)
+            # get the final concrete k loss, mse, and construct full loss
+            k_comp = torch.stack(k_vals).mean()
+            mse_comp = torch.nn.MSELoss()(preds, labels)
+            loss = mse_comp + k_comp
+
         else:
             raise ValueError(f"Unsupported loss function: {choice}")
             

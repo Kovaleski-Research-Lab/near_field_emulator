@@ -51,8 +51,8 @@ model:
         # - 11: MLP-LSTM - MLP followed by LSTM
     # - model_id: model identifier / name
 
-    arch: 1
-    model_id: '3a-28ae-mse'
+    arch: 3
+    model_id: 'kloss-v1'
 
     # General Model Parameters
 
@@ -60,12 +60,15 @@ model:
     learning_rate: 1.e-4
     lr_scheduler: 'CosineAnnealingLR'
     load_checkpoint: False
-    objective_function: 'mse'
+    objective_function: 'kspace'
 
     # multi-criteria loss
+    # - currently used dynamically based on the choice of 'objective_function' above.
+    # - --- if 'objective_function' is 'ssim', alpha controls MSE contribution, beta controls SSIM.
+    # - --- if it is 'kspace', alpha: kMag, beta: kPhase, gamma: kRadial, and delta: kAngular.
     mcl_params:
-        alpha: 1 # MSE
-        beta: 0.8 # SSIM
+        alpha: 1
+        beta: 0.8
         gamma: 1
         delta: 1
 
@@ -85,23 +88,23 @@ model:
     # - patch_size: patch height/width for patch wise or distributed subset
 
     mlp_real:
-        layers: [20, 20, 20, 20, 20, 20, 20, 20, 20]
+        layers: [32, 64, 256]
         activation: 'relu'
 
     mlp_imag:
-        layers: [20, 20, 20, 20, 20, 20, 20, 20, 20]
+        layers: [32, 64, 256]
         activation: 'relu'
 
     cvnn:
-        layers: [512, 64, 32]
+        layers: [32, 64, 256]
         activation: 'complexrelu'
 
     dropout: 0.0
     forward_strategy: 0
     inverse_strategy: 0
     patch_size: 3
-    num_design_conf: 4
-    near_field_dim: 28
+    num_design_conf: 9
+    near_field_dim: 166
     interpolate_fields: False
     forward_ckpt: '/develop/results/meep_meep/refractive_idx/cvnn/model_forward-BASELINE/model.ckpt'
 
@@ -227,7 +230,7 @@ model:
 #--------------------------------
 trainer:
     batch_size: 8
-    num_epochs: 25 # maximum
+    num_epochs: 50 # maximum
 
     accelerator: 'gpu' 
     gpu_config: [True, [0]]
@@ -302,7 +305,7 @@ physics:
 
     #experiment type - what was varied (pillar radii, height, refractive idx, etc.)
     # for preprocessing. current support for "radius" and "refidx"
-    material_parameter: "refidx"
+    material_parameter: "radius"
 
 #--------------------------------
 #       Datamodule Params
