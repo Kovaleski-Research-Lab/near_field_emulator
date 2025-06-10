@@ -52,7 +52,7 @@ model:
     # - model_id: model identifier / name
 
     arch: 3
-    model_id: 'kloss-mse-baseline'
+    model_id: 'kloss-balanced'
 
     # General Model Parameters
 
@@ -60,17 +60,17 @@ model:
     learning_rate: 1.e-4
     lr_scheduler: 'CosineAnnealingLR'
     load_checkpoint: False
-    objective_function: 'mse'
+    objective_function: 'kspace'
 
     # multi-criteria loss
     # - currently used dynamically based on the choice of 'objective_function' above.
     # - --- if 'objective_function' is 'ssim', alpha controls MSE contribution, beta controls SSIM.
     # - --- if it is 'kspace', alpha: kMag, beta: kPhase, gamma: kRadial, and delta: kAngular.
     mcl_params:
-        alpha: 0.5
-        beta: 0.5
-        gamma: 0.5
-        delta: 0.5
+        alpha: 1
+        beta: 1
+        gamma: 1
+        delta: 1
 
     # ssim specs
     ssim:
